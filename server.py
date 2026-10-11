@@ -8,7 +8,6 @@ Oltre ai file della cartella risponde a:
   PUT /api/foto/<nome>   salva un JPEG in photos/; non sovrascrive mai
   GET /api/ricordi       JSON { id: modificato } dei ricordi in ricordi/
   PUT /api/ricordi/<id>  salva ricordi/<id>.json, se non ce n'è già uno più recente
-  DELETE /api/ricordi/<id>   sposta il ricordo in ricordi/eliminati/ (non lo distrugge)
 """
 
 import json
@@ -22,7 +21,6 @@ from urllib.parse import unquote
 RADICE = os.path.dirname(os.path.abspath(__file__))
 PHOTOS = os.path.join(RADICE, 'photos')
 RICORDI = os.path.join(RADICE, 'ricordi')
-ELIMINATI = os.path.join(RICORDI, 'eliminati')
 API_FOTO = '/api/foto'
 API_RICORDI = '/api/ricordi'
 ID_VALIDO = re.compile(r'[a-z0-9-]{1,60}')
@@ -142,22 +140,11 @@ class Diario(SimpleHTTPRequestHandler):
         scrivi(RICORDI, nome, json.dumps(ricordo, ensure_ascii=False, indent=2).encode('utf-8'))
         self.rispondi(201, {'id': id})
 
-    def do_DELETE(self):
-        percorso = self.path.split('?')[0]
-        id = percorso[len(API_RICORDI) + 1:]
-        if not percorso.startswith(API_RICORDI + '/') or not ID_VALIDO.fullmatch(id):
-            return self.rispondi(404, {'errore': 'Indirizzo sconosciuto'})
-        try:
-            os.replace(os.path.join(RICORDI, id + '.json'), os.path.join(ELIMINATI, id + '.json'))
-        except FileNotFoundError:
-            return self.rispondi(404, {'errore': 'Ricordo non trovato'})
-        self.rispondi(200, {'id': id})
-
 
 if __name__ == '__main__':
     porta = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     os.makedirs(PHOTOS, exist_ok=True)
-    os.makedirs(ELIMINATI, exist_ok=True)
+    os.makedirs(RICORDI, exist_ok=True)
     print(f'Diario su http://localhost:{porta}  (ricordi e foto in {RADICE})')
     print('Ctrl+C per fermare.')
     try:

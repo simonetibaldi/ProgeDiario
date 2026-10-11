@@ -13,15 +13,19 @@
 // perde le foto se si rimette nell'archivio un Blob letto dall'archivio stesso.
 // La conversione avviene solo qui (perArchivio, daArchivio); il resto dell'app
 // vede sempre dei File, che vivono in memoria.
+//
+// Un ricordo eliminato non sparisce dall'archivio: al suo posto resta il
+// segnaposto { id, eliminato: true, modificato }, che serve a far arrivare
+// l'eliminazione anche agli altri dispositivi (vedi sincronizza).
 // ---------------------------------------------------------------------------
 
 const DB_NOME = 'diario';
-const DB_VERSIONE = 3;
+const DB_VERSIONE = 4;
 const STORE = 'posts';
 
 const dbPronto = new Promise((resolve, reject) => {
   const req = indexedDB.open(DB_NOME, DB_VERSIONE);
-  // I post delle versioni 1 e 2 non vengono riscritti: li adatta daArchivio quando li legge.
+  // Le versioni cambiano solo la forma dei post, che non vengono riscritti: li adatta daArchivio quando li legge.
   req.onupgradeneeded = (e) => {
     if (e.oldVersion < 1) req.result.createObjectStore(STORE, { keyPath: 'id' });
   };
@@ -45,6 +49,7 @@ async function perArchivio(post) {
 }
 
 function daArchivio(salvato) {
+  if (salvato.eliminato) return salvato;
   const foto = salvato.foto.map((f, i) => (f instanceof Blob
     // versioni 1 e 2: Blob o File salvati direttamente, i più vecchi senza nome
     ? new File([f], f.name || `${salvato.data}_${salvato.id}_${i + 1}.jpg`, { type: 'image/jpeg' })
@@ -56,11 +61,9 @@ const leggiPosts = async () => (await conStore('readonly', (s) => s.getAll())).m
 
 // I byte delle foto vanno letti prima di aprire la transazione, che non aspetta.
 async function salvaPost(post) {
-  const daSalvare = await perArchivio(post);
+  const daSalvare = post.eliminato ? post : await perArchivio(post);
   return conStore('readwrite', (s) => s.put(daSalvare));
 }
-
-const eliminaPost = (id) => conStore('readwrite', (s) => s.delete(id));
 
 // ---------------------------------------------------------------------------
 // Utilità
@@ -133,6 +136,7 @@ function conNome(foto, data) {
 // ---------------------------------------------------------------------------
 
 let posts = [];
+let eliminati = []; // segnaposto dei ricordi eliminati
 let filtroTag = null;
 
 // Stato del modulo aperto
@@ -151,13 +155,15 @@ function tuttiITags() {
 }
 
 async function ricarica() {
-  posts = await leggiPosts();
+  const tutti = await leggiPosts();
+  eliminati = tutti.filter((p) => p.eliminato);
+  posts = tutti.filter((p) => !p.eliminato);
   posts.sort((a, b) => b.data.localeCompare(a.data) || b.ora.localeCompare(a.ora) || b.creato - a.creato);
   if (filtroTag && !tuttiITags().includes(filtroTag)) filtroTag = null;
   disegnaFiltri();
   disegnaTimeline();
   aggiornaStatoBackup();
-  codaCopia = codaCopia.then(copiaInCartella);
+  codaCopia = codaCopia.then(sincronizza);
 }
 
 // ---------------------------------------------------------------------------
@@ -332,13 +338,14 @@ async function salvaModulo() {
 // ---------------------------------------------------------------------------
 // Deposito: la copia dei ricordi fuori dal browser
 //
-// L'archivio è IndexedDB; in più ogni ricordo viene copiato in un deposito,
+// L'archivio è IndexedDB; in più il diario si tiene allineato con un deposito,
 // quando ce n'è uno raggiungibile: le foto in photos/, il resto in
-// ricordi/ID.json (con i nomi delle foto al posto delle foto).
+// ricordi/ID.json (con i nomi delle foto al posto delle foto). Più dispositivi
+// collegati allo stesso deposito mostrano così lo stesso diario.
 //   depositoMac    server.py scrive nella cartella del progetto, sul Mac
 //   depositoDrive  le API di Google Drive, cartella "Diario" (vedi drive.js)
-// Hanno le stesse operazioni; senza deposito il diario funziona lo stesso e la
-// copia si completa alla prossima occasione.
+// Hanno le stesse operazioni; senza deposito il diario funziona lo stesso e ci
+// si riallinea alla prossima occasione.
 // ---------------------------------------------------------------------------
 
 const API_FOTO = 'api/foto';
@@ -370,7 +377,6 @@ const depositoMac = {
   elencoRicordi: async () => (await scarica(API_RICORDI)).json(), // { id: modificato }
   caricaFoto: (file) => carica(`${API_FOTO}/${encodeURIComponent(file.name)}`, file),
   caricaRicordo: (ricordo) => carica(`${API_RICORDI}/${ricordo.id}`, JSON.stringify(ricordo)),
-  eliminaRicordo: (id) => fetch(`${API_RICORDI}/${id}`, { method: 'DELETE' }),
   leggiRicordo: async (id) => (await scarica(`${URL_RICORDI}${id}.json`)).json(),
   leggiFoto: async (nome) => (await scarica(URL_PHOTOS + encodeURIComponent(nome))).blob(),
 };
@@ -392,16 +398,16 @@ async function scegliDeposito() {
 
 function mostraStatoDeposito(testo) {
   $('cartella-stato').textContent = testo;
-  $('btn-recupera').hidden = !deposito;
   // Il pulsante serve la prima volta e quando Google chiede di confermare di nuovo.
   $('btn-drive').hidden = !driveDisponibile() || deposito === depositoMac || driveTokenValido();
   $('btn-drive').textContent = driveCollegato() ? 'Ricollega Google Drive' : 'Collega Google Drive';
 }
 
-// Copia nel deposito le foto che mancano e i ricordi nuovi o modificati.
-// Prima le foto, così un ricordo salvato non ne nomina mai una che non c'è.
-async function copiaInCartella() {
-  const iniziata = Date.now();
+// Mette d'accordo il diario e il deposito: carica i ricordi nuovi o modificati qui
+// (prima le foto, così un ricordo salvato non ne nomina mai una che non c'è) e prende
+// quelli nuovi o modificati altrove. Vince sempre il `modificato` più recente; le
+// eliminazioni viaggiano come segnaposto, quindi vale la stessa regola.
+async function sincronizza() {
   deposito = await scegliDeposito();
   if (!deposito) {
     mostraStatoDeposito(driveDisponibile()
@@ -411,18 +417,18 @@ async function copiaInCartella() {
   }
 
   if (deposito === depositoDrive && !driveTokenValido()) {
-    const daSalvare = posts.filter((p) => p.modificato > (driveStato().salvatoFino || 0)).length;
-    if (daSalvare && await drivePuoRinnovare()) {
-      driveAccedi(false); // la pagina passa da Google e torna: la copia riparte da lì
+    // Il rinnovo porta via la pagina per un attimo: mai mentre si scrive un ricordo.
+    if (await drivePuoRinnovare() && !$('dlg-post').open) {
+      driveAccedi(false); // la pagina passa da Google e torna: si riparte da lì
       return;
     }
-    mostraStatoDeposito(daSalvare
-      ? `Google Drive: ${nRicordi(daSalvare)} in attesa di essere salvati.`
-      : 'Google Drive: tutto salvato.');
+    mostraStatoDeposito('Google Drive è scollegato per ora: i ricordi restano qui e partono appena si ricollega.');
     return;
   }
 
   const tutte = posts.flatMap((p) => p.foto);
+  const qui = [...posts, ...eliminati];
+  let presi = 0;
   try {
     const presenti = await deposito.elencoFoto();
     const fotoMancanti = tutte.filter((f) => !presenti.has(f.name));
@@ -431,36 +437,31 @@ async function copiaInCartella() {
       await deposito.caricaFoto(f);
       presenti.add(f.name);
     }
-    const salvati = await deposito.elencoRicordi();
-    for (const p of posts) {
+
+    const salvati = await deposito.elencoRicordi(); // { id: modificato }
+    for (const p of qui) {
       if (salvati[p.id] >= p.modificato) continue;
-      await deposito.caricaRicordo({ ...p, foto: p.foto.map((f) => f.name) });
+      await deposito.caricaRicordo(p.eliminato ? p : { ...p, foto: p.foto.map((f) => f.name) });
     }
-    if (deposito === depositoDrive) driveRicorda({ salvatoFino: iniziata });
+
+    const modificatoQui = new Map(qui.map((p) => [p.id, p.modificato]));
+    for (const id of Object.keys(salvati)) {
+      if (!(salvati[id] > (modificatoQui.get(id) || 0))) continue;
+      const ricordo = await deposito.leggiRicordo(id);
+      await salvaPost(ricordo.eliminato
+        ? { id: ricordo.id, eliminato: true, modificato: ricordo.modificato }
+        : await daSalvato(ricordo, (nome) => deposito.leggiFoto(nome)));
+      presi++;
+    }
     mostraStatoDeposito(posts.length
-      ? `Salvato ${deposito.dove}: ${nRicordi(posts.length)} e ${nFoto(tutte.length)}.`
+      ? `Allineato con quello che c'è ${deposito.dove}: ${nRicordi(posts.length)} e ${nFoto(tutte.length)}.`
       : `Collegato: i ricordi verranno salvati ${deposito.dove}.`);
   } catch (err) {
     console.error(err);
-    mostraStatoDeposito(`Copia ${deposito.dove} non riuscita: ${navigator.onLine ? err.message : 'manca la rete'}. Riprova alla prossima apertura.`);
+    mostraStatoDeposito(`Non riesco ad allinearmi con quello che c'è ${deposito.dove}: ${navigator.onLine ? err.message : 'manca la rete'}. Riprovo alla prossima apertura.`);
   }
-}
-
-// Riporta nel diario i ricordi del deposito che qui mancano o sono più vecchi.
-async function recuperaDaCartella() {
-  const salvati = await deposito.elencoRicordi();
-  await deposito.elencoFoto();
-  const qui = new Map(posts.map((p) => [p.id, p.modificato]));
-  const ids = Object.keys(salvati).filter((id) => !(qui.get(id) >= salvati[id]));
-  if (!ids.length) {
-    alert('Non c\'è niente di salvato che manchi in questo diario.');
-    return;
-  }
-  if (!confirm(`Ci sono ${nRicordi(ids.length)} salvati ${deposito.dove} che qui mancano o sono meno recenti. Li recupero?`)) return;
-
-  const ricordi = [];
-  for (const id of ids) ricordi.push(await deposito.leggiRicordo(id));
-  await unisci(ricordi, (nome) => deposito.leggiFoto(nome));
+  // Ridisegna con i ricordi arrivati; la sincronizzazione che ne segue non trova più niente da fare.
+  if (presi) await ricarica();
 }
 
 // Le foto in photos/ che non stanno in nessun post né nel modulo aperto.
@@ -614,21 +615,27 @@ async function importa(file) {
   });
 }
 
-// Aggiunge i ricordi che mancano; se uno esiste già vince la versione modificata più di recente.
-// In ogni ricordo `foto` è un elenco di nomi: leggiFoto(nome) ne restituisce il contenuto.
+// Da un ricordo salvato fuori dall'archivio (backup o deposito), dove `foto` è un elenco
+// di nomi, a un post: leggiFoto(nome) restituisce il contenuto di una foto.
+async function daSalvato(ricordo, leggiFoto) {
+  const foto = [];
+  for (const nome of ricordo.foto) {
+    foto.push(new File([await leggiFoto(nome)], nome.split('/').pop(), { type: 'image/jpeg' }));
+  }
+  return { ...ricordo, ora: ricordo.ora || '', foto };
+}
+
+// Aggiunge i ricordi che mancano; se uno esiste già (anche eliminato) vince la versione
+// modificata più di recente.
 async function unisci(ricordi, leggiFoto) {
-  const esistenti = new Map(posts.map((p) => [p.id, p]));
+  const esistenti = new Map([...posts, ...eliminati].map((p) => [p.id, p]));
   let aggiunti = 0, aggiornati = 0, invariati = 0;
   for (const p of ricordi) {
     const attuale = esistenti.get(p.id);
     if (attuale && attuale.modificato >= p.modificato) { invariati++; continue; }
 
-    const foto = [];
-    for (const nome of p.foto) {
-      foto.push(new File([await leggiFoto(nome)], nome.split('/').pop(), { type: 'image/jpeg' }));
-    }
-    await salvaPost({ ...p, ora: p.ora || '', foto });
-    attuale ? aggiornati++ : aggiunti++;
+    await salvaPost(await daSalvato(p, leggiFoto));
+    attuale && !attuale.eliminato ? aggiornati++ : aggiunti++;
   }
   await ricarica();
   alert(`Fatto: ${aggiunti} aggiunti, ${aggiornati} aggiornati, ${invariati} già presenti.`);
@@ -659,10 +666,7 @@ $('form-post').addEventListener('submit', (e) => {
 $('btn-elimina').onclick = async () => {
   if (!inModifica || !confirm('Eliminare questo ricordo? Non si può annullare.')) return;
   try {
-    const id = inModifica.id;
-    await eliminaPost(id);
-    // In coda alla copia, così una copia già partita non lo rimette nel deposito.
-    codaCopia = codaCopia.then(() => deposito && deposito.eliminaRicordo(id)).catch(() => {});
+    await salvaPost({ id: inModifica.id, eliminato: true, modificato: Date.now() });
     chiudiModulo();
     await ricarica();
   } catch (err) {
@@ -683,7 +687,10 @@ $('campo-foto').addEventListener('change', async (e) => {
   disegnaAnteprime();
 });
 
-$('btn-recupera').onclick = () => recuperaDaCartella().catch(mostraErrore);
+// Tornando sul diario da un'altra app o scheda ci si riallinea col deposito.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !$('dlg-post').open) codaCopia = codaCopia.then(sincronizza);
+});
 $('btn-drive').onclick = () => driveAccedi(true);
 $('btn-cartella').onclick = () => apriCartella().catch(mostraErrore);
 $('btn-chiudi-cartella').onclick = () => $('dlg-cartella').close();

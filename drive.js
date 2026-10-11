@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // Google Drive
 //
-// Permette al diario pubblicato (senza server.py) di salvare i ricordi nel
+// Permette al diario pubblicato (senza server.py) di tenere i ricordi nel
 // Drive di chi lo usa, in una cartella "Diario" con dentro ricordi/ e photos/.
 // Il permesso chiesto (drive.file) riguarda solo i file creati dal diario:
 // il resto del Drive non si vede.
@@ -26,7 +26,7 @@ const DRIVE_ACCESSO = 'https://accounts.google.com/o/oauth2/v2/auth';
 const DRIVE_PAUSA_TENTATIVI = 10 * 60 * 1000;
 const TIPO_CARTELLA = 'application/vnd.google-apps.folder';
 
-// In localStorage: { collegato, token, scade, attesa, tentato, daRicollegare, salvatoFino }
+// In localStorage: { collegato, token, scade, attesa, tentato, daRicollegare }
 const CHIAVE_DRIVE = 'diario.drive';
 
 function driveStato() {
@@ -196,18 +196,6 @@ const depositoDrive = {
     const contenuto = new Blob([JSON.stringify(ricordo, null, 2)], { type: 'application/json' });
     const esistente = this.ricordi.get(nome);
     await driveCarica(this.cartelle.ricordi, nome, contenuto, { modificato: String(ricordo.modificato) }, esistente && esistente.id);
-  },
-
-  // Lo sposta nel cestino di Drive, che lo conserva per 30 giorni.
-  async eliminaRicordo(id) {
-    await this.elencoRicordi();
-    const voce = this.ricordi.get(id + '.json');
-    if (!voce) return;
-    await driveChiama(`${DRIVE_FILE}/${voce.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trashed: true }),
-    });
   },
 
   // Chiamare prima elencoRicordi (per leggiRicordo) ed elencoFoto (per leggiFoto).
