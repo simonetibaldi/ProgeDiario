@@ -1,0 +1,10 @@
+# I ricordi non vanno mai online: su GitHub finisce solo il codice.
+photos/
+ricordi/
+*.zip
+
+# Appunti di lavoro: restano sul Mac.
+CLAUDE.md
+
+.DS_Store
+__pycache__/

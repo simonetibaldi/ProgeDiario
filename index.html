@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1ea">
+  <title>Diario</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icone/icona-180.png">
+  <link rel="icon" href="icone/icona-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Diario">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="testata">
+    <div class="testata-riga">
+      <h1>Diario</h1>
+      <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
+    </div>
+    <div id="filtri" class="filtri"></div>
+  </header>
+
+  <main id="timeline" class="timeline"></main>
+
+  <button id="btn-nuovo" class="fab" aria-label="Nuovo ricordo">+</button>
+
+  <!-- Modulo nuovo / modifica post -->
+  <dialog id="dlg-post" class="dlg-post">
+    <form id="form-post" method="dialog">
+      <div class="dlg-barra">
+        <button type="button" id="btn-annulla" class="btn-testo">Annulla</button>
+        <h2 id="dlg-titolo">Nuovo ricordo</h2>
+        <button type="submit" class="btn-primario">Salva</button>
+      </div>
+
+      <div class="campo">
+        <span>Data e ora</span>
+        <div class="riga-data">
+          <input type="date" id="campo-data" aria-label="Data" required>
+          <input type="time" id="campo-ora" aria-label="Ora">
+        </div>
+      </div>
+
+      <label class="campo">
+        <span>Testo</span>
+        <textarea id="campo-testo" rows="6" placeholder="Cosa vuoi ricordare?"></textarea>
+      </label>
+
+      <div class="campo">
+        <span>Foto</span>
+        <div id="anteprime" class="anteprime"></div>
+        <div class="chips">
+          <label class="btn-secondario">
+            Aggiungi foto
+            <input type="file" id="campo-foto" accept="image/*" multiple hidden>
+          </label>
+          <button type="button" id="btn-cartella" class="btn-secondario" hidden>Dalla cartella photos</button>
+        </div>
+      </div>
+
+      <div class="campo">
+        <span>Tag</span>
+        <div id="tag-scelti" class="chips"></div>
+        <input type="text" id="campo-tag" placeholder="Scrivi un tag e premi Invio" autocomplete="off" autocapitalize="sentences">
+        <div id="tag-suggeriti" class="chips suggeriti"></div>
+      </div>
+
+      <button type="button" id="btn-elimina" class="btn-pericolo" hidden>Elimina ricordo</button>
+    </form>
+  </dialog>
+
+  <!-- Foto a tutto schermo -->
+  <dialog id="dlg-foto" class="dlg-foto">
+    <img id="foto-grande" alt="">
+  </dialog>
+
+  <!-- Backup -->
+  <dialog id="dlg-backup" class="dlg-backup">
+    <h2>Backup</h2>
+    <p id="backup-stato"></p>
+    <button type="button" id="btn-esporta" class="btn-primario">Esporta backup</button>
+    <label class="btn-secondario">
+      Importa backup
+      <input type="file" id="campo-importa" accept=".zip,application/zip" hidden>
+    </label>
+    <p id="cartella-stato"></p>
+    <button type="button" id="btn-recupera" class="btn-secondario" hidden>Recupera dalla cartella</button>
+    <button type="button" id="btn-chiudi-backup" class="btn-testo">Chiudi</button>
+  </dialog>
+
+  <!-- Foto prese dalla cartella photos/ -->
+  <dialog id="dlg-cartella" class="dlg-cartella">
+    <div class="dlg-barra">
+      <h2>Cartella photos</h2>
+      <button type="button" id="btn-chiudi-cartella" class="btn-primario">Fine</button>
+    </div>
+    <p id="cartella-vuota" class="vuoto">Nella cartella non ci sono foto JPEG ancora da usare.</p>
+    <div id="cartella-griglia" class="cartella-griglia"></div>
+  </dialog>
+
+  <script src="zip.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

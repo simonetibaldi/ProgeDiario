@@ -1,0 +1,365 @@
+:root {
+  --sfondo: #f6f1ea;
+  --carta: #fffdf9;
+  --testo: #2b2622;
+  --testo-tenue: #7d736a;
+  --bordo: #e6ddd1;
+  --accento: #b5562f;
+  --accento-testo: #ffffff;
+  --chip: #efe6da;
+  --pericolo: #b3261e;
+  --raggio: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sfondo: #1b1816;
+    --carta: #26221f;
+    --testo: #efe8e0;
+    --testo-tenue: #a2978c;
+    --bordo: #3a342f;
+    --accento: #e08a5f;
+    --accento-testo: #1b1816;
+    --chip: #342e29;
+    --pericolo: #f2867f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--sfondo);
+  color: var(--testo);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* Testata e filtri */
+
+.testata {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--sfondo);
+  border-bottom: 1px solid var(--bordo);
+  padding: calc(12px + env(safe-area-inset-top)) 16px 10px;
+}
+
+.testata-riga {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 640px;
+  margin: 0 auto 8px;
+}
+
+/* Pallino: ci sono ricordi non ancora nel backup */
+.btn-backup.da-fare::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accento);
+  vertical-align: middle;
+}
+
+.testata h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.filtri {
+  display: flex;
+  gap: 8px;
+  max-width: 640px;
+  margin: 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filtri::-webkit-scrollbar { display: none; }
+.filtri:empty { display: none; }
+
+/* Chip (tag) */
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips:empty { display: none; }
+
+.chip {
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--chip);
+  padding: 4px 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.chip.attivo { background: var(--accento); color: var(--accento-testo); }
+.suggeriti .chip { background: transparent; border-color: var(--bordo); color: var(--testo-tenue); }
+
+/* Timeline */
+
+.timeline {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vuoto {
+  margin-top: 20vh;
+  text-align: center;
+  color: var(--testo-tenue);
+}
+
+/* Un giorno: la data in cima e sotto i suoi ricordi, separati da una riga */
+.giorno {
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  overflow: hidden;
+}
+
+.giorno-data {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  font-weight: normal;
+}
+.giorno-data::first-letter { text-transform: uppercase; }
+
+/* Le foto stanno a sinistra, le scritte accanto */
+.post { display: flex; align-items: flex-start; border-top: 1px solid var(--bordo); }
+
+.post-corpo { flex: 1; min-width: 0; padding: 10px 16px 16px; }
+
+.post-testa {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.post-ora { font-size: 15px; color: var(--testo-tenue); }
+
+.post-testo {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.post .chips { margin-top: 12px; }
+
+.post-foto {
+  flex: none;
+  width: 40%;
+  max-width: 240px;
+  margin: 14px 0 16px 16px;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.post-foto.singola { grid-template-columns: 1fr; }
+.post-foto img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  cursor: zoom-in;
+}
+.post-foto.singola img { aspect-ratio: auto; max-height: 50vh; }
+
+/* Pulsanti */
+
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  width: 60px;
+  height: 60px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accento);
+  color: var(--accento-testo);
+  font-size: 34px;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.btn-testo {
+  border: 0;
+  background: none;
+  padding: 6px 0;
+  color: var(--accento);
+  font-size: 15px;
+}
+
+.btn-primario {
+  border: 0;
+  border-radius: 999px;
+  background: var(--accento);
+  color: var(--accento-testo);
+  padding: 6px 16px;
+  font-weight: 600;
+}
+
+.btn-secondario {
+  display: inline-block;
+  align-self: flex-start;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: none;
+  cursor: pointer;
+}
+.btn-secondario[hidden] { display: none; }
+
+.btn-pericolo {
+  border: 0;
+  background: none;
+  padding: 12px 0;
+  color: var(--pericolo);
+}
+
+/* Modulo */
+
+dialog { border: 0; padding: 0; color: var(--testo); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+.dlg-post {
+  width: min(640px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 auto;
+  background: var(--sfondo);
+}
+
+.dlg-post form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.dlg-barra {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -16px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: var(--sfondo);
+  border-bottom: 1px solid var(--bordo);
+}
+.dlg-barra h2 { margin: 0; font-size: 17px; }
+
+.campo { display: flex; flex-direction: column; gap: 8px; }
+.campo > span { font-size: 13px; color: var(--testo-tenue); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.campo input[type="date"],
+.campo input[type="time"],
+.campo input[type="text"],
+.campo textarea {
+  width: 100%;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: var(--carta);
+  padding: 10px 12px;
+}
+.campo textarea { resize: vertical; min-height: 120px; }
+
+.riga-data { display: flex; gap: 8px; }
+.riga-data input[type="time"] { width: auto; flex: none; }
+
+.anteprime { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.anteprime:empty { display: none; }
+
+.anteprima { position: relative; }
+.anteprima img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.anteprima button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  line-height: 1;
+}
+
+/* Backup */
+
+.dlg-backup {
+  width: min(360px, calc(100vw - 32px));
+  border-radius: var(--raggio);
+  background: var(--sfondo);
+  padding: 20px;
+}
+.dlg-backup[open] { display: flex; flex-direction: column; gap: 12px; }
+.dlg-backup h2 { margin: 0; font-size: 18px; }
+.dlg-backup p { margin: 0 0 4px; color: var(--testo-tenue); }
+.dlg-backup .btn-primario { padding: 10px 16px; }
+.dlg-backup .btn-primario:disabled { opacity: 0.6; }
+.dlg-backup .btn-secondario { align-self: stretch; padding: 10px 16px; text-align: center; }
+
+/* Foto prese dalla cartella photos/ */
+
+.dlg-cartella {
+  width: min(640px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 auto;
+  background: var(--sfondo);
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+}
+.cartella-griglia {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  padding-top: 16px;
+}
+.cartella-griglia img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+/* Foto a tutto schermo */
+
+.dlg-foto {
+  width: 100vw;
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
+  background: #000;
+}
+.dlg-foto img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-out; }
