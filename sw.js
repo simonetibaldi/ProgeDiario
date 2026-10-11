@@ -12,6 +12,7 @@ const FILE = [
   'index.html',
   'style.css',
   'zip.js',
+  'drive.js',
   'app.js',
   'manifest.webmanifest',
   'icone/icona-180.png',

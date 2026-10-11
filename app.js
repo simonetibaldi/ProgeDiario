@@ -330,14 +330,15 @@ async function salvaModulo() {
 }
 
 // ---------------------------------------------------------------------------
-// Cartella del Drive (photos/ e ricordi/)
+// Deposito: la copia dei ricordi fuori dal browser
 //
-// Quando il diario è aperto con server.py, ogni ricordo viene anche copiato
-// nella cartella del progetto, che Google Drive sincronizza: le foto in
-// photos/, il resto in ricordi/ID.json (con i nomi delle foto al posto delle
-// foto). Da photos/ si possono anche prendere foto per un ricordo.
-// L'archivio resta IndexedDB: senza server.py il diario funziona lo stesso, e
-// la copia si completa alla prossima occasione.
+// L'archivio è IndexedDB; in più ogni ricordo viene copiato in un deposito,
+// quando ce n'è uno raggiungibile: le foto in photos/, il resto in
+// ricordi/ID.json (con i nomi delle foto al posto delle foto).
+//   depositoMac    server.py scrive nella cartella del progetto, sul Mac
+//   depositoDrive  le API di Google Drive, cartella "Diario" (vedi drive.js)
+// Hanno le stesse operazioni; senza deposito il diario funziona lo stesso e la
+// copia si completa alla prossima occasione.
 // ---------------------------------------------------------------------------
 
 const API_FOTO = 'api/foto';
@@ -345,7 +346,8 @@ const API_RICORDI = 'api/ricordi';
 const URL_PHOTOS = 'photos/';
 const URL_RICORDI = 'ricordi/';
 
-let cartella = null; // Set dei nomi presenti in photos/, oppure null se server.py non risponde
+let deposito = null; // quello in uso, oppure null
+let cartella = null; // Set dei nomi in photos/ sul Mac, oppure null se server.py non risponde
 let codaCopia = Promise.resolve(); // una copia alla volta
 
 const nFoto = (n) => (n === 1 ? '1 foto' : `${n} foto`);
@@ -356,66 +358,109 @@ async function scarica(url) {
   return risposta;
 }
 
-async function leggiCartella() {
-  try {
-    const risposta = await fetch(API_FOTO, { cache: 'no-store' });
-    cartella = risposta.ok ? new Set(await risposta.json()) : null;
-  } catch {
-    cartella = null;
-  }
-}
-
-// Copia nella cartella le foto che mancano e i ricordi nuovi o modificati.
-// Prima le foto, così un ricordo salvato non ne nomina mai una che non c'è.
-async function copiaInCartella() {
-  await leggiCartella();
-  $('btn-recupera').hidden = !cartella;
-  if (!cartella) {
-    $('cartella-stato').textContent = 'Cartella del Drive non raggiungibile: i ricordi sono solo in questo browser.';
-    return;
-  }
-  const tutte = posts.flatMap((p) => p.foto);
-  const fotoMancanti = tutte.filter((f) => !cartella.has(f.name));
-  try {
-    if (fotoMancanti.length) $('cartella-stato').textContent = `Copio ${nFoto(fotoMancanti.length)} nella cartella del Drive…`;
-    for (const f of fotoMancanti) {
-      await carica(`${API_FOTO}/${encodeURIComponent(f.name)}`, f);
-      cartella.add(f.name);
-    }
-    const salvati = await (await scarica(API_RICORDI)).json(); // { id: modificato }
-    for (const p of posts) {
-      if (salvati[p.id] >= p.modificato) continue;
-      await carica(`${API_RICORDI}/${p.id}`, JSON.stringify({ ...p, foto: p.foto.map((f) => f.name) }));
-    }
-    $('cartella-stato').textContent = posts.length
-      ? `Cartella del Drive: ${nRicordi(posts.length)} e ${nFoto(tutte.length)}, tutto salvato.`
-      : 'Cartella del Drive collegata.';
-  } catch (err) {
-    console.error(err);
-    $('cartella-stato').textContent = 'Copia nella cartella del Drive non riuscita: ' + err.message;
-  }
-}
-
 async function carica(url, contenuto) {
   const risposta = await fetch(url, { method: 'PUT', body: contenuto });
   // 409: nella cartella c'è già (la foto) o ce n'è uno più recente (il ricordo)
   if (!risposta.ok && risposta.status !== 409) throw new Error(`${url} (errore ${risposta.status})`);
 }
 
-// Riporta nel diario i ricordi della cartella che qui mancano o sono più vecchi.
+const depositoMac = {
+  dove: 'nella cartella del Mac',
+  elencoFoto: async () => new Set(await (await scarica(API_FOTO)).json()),
+  elencoRicordi: async () => (await scarica(API_RICORDI)).json(), // { id: modificato }
+  caricaFoto: (file) => carica(`${API_FOTO}/${encodeURIComponent(file.name)}`, file),
+  caricaRicordo: (ricordo) => carica(`${API_RICORDI}/${ricordo.id}`, JSON.stringify(ricordo)),
+  eliminaRicordo: (id) => fetch(`${API_RICORDI}/${id}`, { method: 'DELETE' }),
+  leggiRicordo: async (id) => (await scarica(`${URL_RICORDI}${id}.json`)).json(),
+  leggiFoto: async (nome) => (await scarica(URL_PHOTOS + encodeURIComponent(nome))).blob(),
+};
+
+async function leggiCartella() {
+  try {
+    cartella = await depositoMac.elencoFoto();
+  } catch {
+    cartella = null;
+  }
+}
+
+// Il Mac se server.py risponde, altrimenti Google Drive se è stato collegato.
+async function scegliDeposito() {
+  await leggiCartella();
+  if (cartella) return depositoMac;
+  return driveCollegato() ? depositoDrive : null;
+}
+
+function mostraStatoDeposito(testo) {
+  $('cartella-stato').textContent = testo;
+  $('btn-recupera').hidden = !deposito;
+  // Il pulsante serve la prima volta e quando Google chiede di confermare di nuovo.
+  $('btn-drive').hidden = !driveDisponibile() || deposito === depositoMac || driveTokenValido();
+  $('btn-drive').textContent = driveCollegato() ? 'Ricollega Google Drive' : 'Collega Google Drive';
+}
+
+// Copia nel deposito le foto che mancano e i ricordi nuovi o modificati.
+// Prima le foto, così un ricordo salvato non ne nomina mai una che non c'è.
+async function copiaInCartella() {
+  const iniziata = Date.now();
+  deposito = await scegliDeposito();
+  if (!deposito) {
+    mostraStatoDeposito(driveDisponibile()
+      ? 'I ricordi sono solo in questo browser. Collega Google Drive per salvarli lì da soli.'
+      : 'Nessuna copia fuori dal browser: i ricordi sono solo qui.');
+    return;
+  }
+
+  if (deposito === depositoDrive && !driveTokenValido()) {
+    const daSalvare = posts.filter((p) => p.modificato > (driveStato().salvatoFino || 0)).length;
+    if (daSalvare && await drivePuoRinnovare()) {
+      driveAccedi(false); // la pagina passa da Google e torna: la copia riparte da lì
+      return;
+    }
+    mostraStatoDeposito(daSalvare
+      ? `Google Drive: ${nRicordi(daSalvare)} in attesa di essere salvati.`
+      : 'Google Drive: tutto salvato.');
+    return;
+  }
+
+  const tutte = posts.flatMap((p) => p.foto);
+  try {
+    const presenti = await deposito.elencoFoto();
+    const fotoMancanti = tutte.filter((f) => !presenti.has(f.name));
+    if (fotoMancanti.length) mostraStatoDeposito(`Copio ${nFoto(fotoMancanti.length)} ${deposito.dove}…`);
+    for (const f of fotoMancanti) {
+      await deposito.caricaFoto(f);
+      presenti.add(f.name);
+    }
+    const salvati = await deposito.elencoRicordi();
+    for (const p of posts) {
+      if (salvati[p.id] >= p.modificato) continue;
+      await deposito.caricaRicordo({ ...p, foto: p.foto.map((f) => f.name) });
+    }
+    if (deposito === depositoDrive) driveRicorda({ salvatoFino: iniziata });
+    mostraStatoDeposito(posts.length
+      ? `Salvato ${deposito.dove}: ${nRicordi(posts.length)} e ${nFoto(tutte.length)}.`
+      : `Collegato: i ricordi verranno salvati ${deposito.dove}.`);
+  } catch (err) {
+    console.error(err);
+    mostraStatoDeposito(`Copia ${deposito.dove} non riuscita: ${navigator.onLine ? err.message : 'manca la rete'}. Riprova alla prossima apertura.`);
+  }
+}
+
+// Riporta nel diario i ricordi del deposito che qui mancano o sono più vecchi.
 async function recuperaDaCartella() {
-  const salvati = await (await scarica(API_RICORDI)).json();
+  const salvati = await deposito.elencoRicordi();
+  await deposito.elencoFoto();
   const qui = new Map(posts.map((p) => [p.id, p.modificato]));
   const ids = Object.keys(salvati).filter((id) => !(qui.get(id) >= salvati[id]));
   if (!ids.length) {
-    alert('Nella cartella non c\'è niente che manchi in questo diario.');
+    alert('Non c\'è niente di salvato che manchi in questo diario.');
     return;
   }
-  if (!confirm(`Nella cartella ci sono ${nRicordi(ids.length)} che qui mancano o sono meno recenti. Li recupero?`)) return;
+  if (!confirm(`Ci sono ${nRicordi(ids.length)} salvati ${deposito.dove} che qui mancano o sono meno recenti. Li recupero?`)) return;
 
   const ricordi = [];
-  for (const id of ids) ricordi.push(await (await scarica(`${URL_RICORDI}${id}.json`)).json());
-  await unisci(ricordi, async (nome) => (await scarica(URL_PHOTOS + encodeURIComponent(nome))).blob());
+  for (const id of ids) ricordi.push(await deposito.leggiRicordo(id));
+  await unisci(ricordi, (nome) => deposito.leggiFoto(nome));
 }
 
 // Le foto in photos/ che non stanno in nessun post né nel modulo aperto.
@@ -616,8 +661,8 @@ $('btn-elimina').onclick = async () => {
   try {
     const id = inModifica.id;
     await eliminaPost(id);
-    // In coda alla copia, così una copia già partita non lo rimette nella cartella.
-    codaCopia = codaCopia.then(() => fetch(`${API_RICORDI}/${id}`, { method: 'DELETE' })).catch(() => {});
+    // In coda alla copia, così una copia già partita non lo rimette nel deposito.
+    codaCopia = codaCopia.then(() => deposito && deposito.eliminaRicordo(id)).catch(() => {});
     chiudiModulo();
     await ricarica();
   } catch (err) {
@@ -639,6 +684,7 @@ $('campo-foto').addEventListener('change', async (e) => {
 });
 
 $('btn-recupera').onclick = () => recuperaDaCartella().catch(mostraErrore);
+$('btn-drive').onclick = () => driveAccedi(true);
 $('btn-cartella').onclick = () => apriCartella().catch(mostraErrore);
 $('btn-chiudi-cartella').onclick = () => $('dlg-cartella').close();
 
