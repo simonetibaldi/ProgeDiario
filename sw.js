@@ -27,17 +27,23 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('fetch', (e) => {
-  // Solo i file dell'app: le richieste a server.py (api/, photos/, ricordi/) vanno dritte in rete.
-  if (e.request.method !== 'GET' || !INDIRIZZI.has(e.request.url)) return;
-  e.respondWith(
-    fetch(e.request, { cache: 'no-cache' })
-      .then((risposta) => {
-        if (risposta.ok) {
-          const copia = risposta.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copia));
-        }
-        return risposta;
-      })
-      .catch(() => caches.match(e.request)),
-  );
+  // Solo l'apertura della pagina e i file dell'app: le richieste a server.py
+  // (api/, photos/, ricordi/) vanno dritte in rete.
+  const apertura = e.request.mode === 'navigate';
+  if (e.request.method !== 'GET' || !(apertura || INDIRIZZI.has(e.request.url))) return;
+  e.respondWith(rispondi(e.request.url, apertura));
 });
+
+async function rispondi(url, apertura) {
+  const cache = await caches.open(CACHE);
+  try {
+    const risposta = await fetch(url, { cache: 'no-cache' });
+    if (risposta.ok && INDIRIZZI.has(url)) await cache.put(url, risposta.clone());
+    return risposta;
+  } catch (err) {
+    // Senza rete: la copia del file; per l'apertura va bene comunque la pagina dell'app.
+    const copia = (await cache.match(url)) || (apertura && await cache.match('index.html'));
+    if (copia) return copia;
+    throw err;
+  }
+}
