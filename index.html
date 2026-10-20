@@ -16,7 +16,10 @@
   <header class="testata">
     <div class="testata-riga">
       <h1>Diario</h1>
-      <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
+      <div class="testata-azioni">
+        <button id="btn-calendario" class="btn-testo">Calendario</button>
+        <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
+      </div>
     </div>
     <div id="filtri" class="filtri"></div>
   </header>
@@ -87,6 +90,15 @@
     <p id="cartella-stato"></p>
     <button type="button" id="btn-drive" class="btn-secondario" hidden>Collega Google Drive</button>
     <button type="button" id="btn-chiudi-backup" class="btn-testo">Chiudi</button>
+  </dialog>
+
+  <!-- Calendario -->
+  <dialog id="dlg-calendario" class="dlg-calendario">
+    <div class="dlg-barra">
+      <h2>Calendario</h2>
+      <button type="button" id="btn-chiudi-calendario" class="btn-primario">Chiudi</button>
+    </div>
+    <div id="calendario-mesi" class="calendario-mesi"></div>
   </dialog>
 
   <!-- Foto prese dalla cartella photos/ -->

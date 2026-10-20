@@ -84,10 +84,15 @@ function nuovoId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
+// 'AAAA-MM-GG' da anno, mese (0 = gennaio) e giorno
+function dataDa(anno, mese, giorno) {
+  const due = (n) => String(n).padStart(2, '0');
+  return `${anno}-${due(mese + 1)}-${due(giorno)}`;
+}
+
 function oggi() {
   const d = new Date();
-  const due = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`;
+  return dataDa(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 function oraAdesso() {
@@ -196,8 +201,11 @@ function disegnaTimeline() {
   // Un riquadro per giorno, con dentro i ricordi di quel giorno (i post sono già in ordine).
   const giorni = new Map();
   for (const p of visibili) giorni.set(p.data, [...(giorni.get(p.data) || []), p]);
-  $('timeline').replaceChildren(...[...giorni].map(([data, delGiorno]) => el('section', { className: 'giorno' },
-    el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
+  $('timeline').replaceChildren(...[...giorni].map(([data, delGiorno]) => el('section', { className: 'giorno', id: 'giorno-' + data },
+    el('div', { className: 'giorno-testa' },
+      el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
+      el('button', { className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, data) }),
+    ),
     ...delGiorno.map(disegnaPost),
   )));
 }
@@ -239,14 +247,15 @@ function apriFoto(url) {
 // Modulo nuovo / modifica
 // ---------------------------------------------------------------------------
 
-function apriModulo(post = null) {
+// Senza post è un ricordo nuovo, per oggi o per il giorno indicato.
+function apriModulo(post = null, giorno = oggi()) {
   inModifica = post;
   formFoto = post ? [...post.foto] : [];
   formTags = post ? [...post.tags] : [];
 
   $('dlg-titolo').textContent = post ? 'Modifica ricordo' : 'Nuovo ricordo';
-  $('campo-data').value = post ? post.data : oggi();
-  $('campo-ora').value = post ? post.ora : oraAdesso();
+  $('campo-data').value = post ? post.data : giorno;
+  $('campo-ora').value = post ? post.ora : (giorno === oggi() ? oraAdesso() : '');
   $('campo-testo').value = post ? post.testo : '';
   $('campo-tag').value = '';
   $('btn-elimina').hidden = !post;
@@ -333,6 +342,101 @@ async function salvaModulo() {
   });
   chiudiModulo();
   await ricarica();
+}
+
+// ---------------------------------------------------------------------------
+// Calendario
+//
+// I mesi uno sotto l'altro, dal più vecchio in alto al corrente in fondo; si
+// apre in fondo e si scorre in su per andare indietro. I giorni con ricordi
+// sono cerchiati; quelli futuri non si toccano.
+// ---------------------------------------------------------------------------
+
+const NOMI_GIORNI = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+const MESI_IN_PIU = 12; // quanti mesi aggiunge "Mesi precedenti"
+
+let mesiIndietro = 12; // quanti mesi mostrare prima del corrente (almeno fino al primo ricordo)
+
+function apriCalendario() {
+  disegnaCalendario();
+  $('dlg-calendario').showModal();
+  $('dlg-calendario').scrollTop = $('dlg-calendario').scrollHeight; // il mese corrente è in fondo
+}
+
+function disegnaCalendario() {
+  const adesso = new Date();
+  const primo = posts.length ? posts[posts.length - 1].data : oggi(); // posts va dal più recente
+  const [annoPrimo, mesePrimo] = primo.split('-').map(Number);
+  const mesiDalPrimo = (adesso.getFullYear() - annoPrimo) * 12 + adesso.getMonth() + 1 - mesePrimo;
+  mesiIndietro = Math.max(mesiIndietro, mesiDalPrimo);
+
+  const conRicordi = new Set(posts.map((p) => p.data));
+  const mesi = [];
+  for (let i = mesiIndietro; i >= 0; i--) {
+    mesi.push(disegnaMese(adesso.getFullYear(), adesso.getMonth() - i, conRicordi));
+  }
+  $('calendario-mesi').replaceChildren(
+    el('button', { type: 'button', className: 'btn-secondario', textContent: 'Mesi precedenti', onclick: altriMesi }),
+    ...mesi,
+  );
+}
+
+// Aggiunge mesi in cima senza far saltare la vista.
+function altriMesi() {
+  const dlg = $('dlg-calendario');
+  const dalFondo = dlg.scrollHeight - dlg.scrollTop;
+  mesiIndietro += MESI_IN_PIU;
+  disegnaCalendario();
+  dlg.scrollTop = dlg.scrollHeight - dalFondo;
+}
+
+// mese può uscire da 0-11 (per esempio -3): Date lo riporta nell'anno giusto.
+function disegnaMese(anno, mese, conRicordi) {
+  const inizio = new Date(anno, mese, 1);
+  anno = inizio.getFullYear();
+  mese = inizio.getMonth();
+  const oggiStr = oggi();
+
+  const griglia = el('div', { className: 'mese-griglia' },
+    ...NOMI_GIORNI.map((g) => el('span', { className: 'mese-intestazione', textContent: g })));
+  const vuoti = (inizio.getDay() + 6) % 7; // la settimana comincia di lunedì
+  for (let i = 0; i < vuoti; i++) griglia.append(el('span'));
+
+  const giorniNelMese = new Date(anno, mese + 1, 0).getDate();
+  for (let g = 1; g <= giorniNelMese; g++) {
+    const data = dataDa(anno, mese, g);
+    griglia.append(el('button', {
+      type: 'button',
+      className: 'giorno-cal' + (conRicordi.has(data) ? ' con-ricordi' : '') + (data === oggiStr ? ' oggi' : ''),
+      textContent: g,
+      disabled: data > oggiStr,
+      onclick: () => vaiAlGiorno(data),
+    }));
+  }
+
+  return el('section', { className: 'mese' },
+    el('h3', { className: 'mese-titolo', textContent: inizio.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }) }),
+    griglia);
+}
+
+// Un giorno con ricordi: lo mostra nella timeline. Un giorno vuoto: apre un ricordo nuovo per quel giorno.
+function vaiAlGiorno(data) {
+  $('dlg-calendario').close();
+  const delGiorno = posts.filter((p) => p.data === data);
+  if (!delGiorno.length) {
+    apriModulo(null, data);
+    return;
+  }
+  if (filtroTag && !delGiorno.some((p) => p.tags.includes(filtroTag))) {
+    filtroTag = null; // il filtro lo nasconderebbe
+    disegnaFiltri();
+    disegnaTimeline();
+  }
+  const riquadro = document.getElementById('giorno-' + data);
+  const sopra = document.querySelector('.testata').offsetHeight + 8; // la testata resta in cima e lo coprirebbe
+  window.scrollTo({ top: riquadro.getBoundingClientRect().top + window.scrollY - sopra, behavior: 'smooth' });
+  riquadro.classList.add('evidenziato');
+  setTimeout(() => riquadro.classList.remove('evidenziato'), 1600);
 }
 
 // ---------------------------------------------------------------------------
@@ -658,6 +762,8 @@ $('campo-importa').addEventListener('change', (e) => {
 });
 
 $('btn-nuovo').onclick = () => apriModulo();
+$('btn-calendario').onclick = apriCalendario;
+$('btn-chiudi-calendario').onclick = () => $('dlg-calendario').close();
 $('btn-annulla').onclick = chiudiModulo;
 $('dlg-post').addEventListener('cancel', (e) => { e.preventDefault(); chiudiModulo(); });
 
