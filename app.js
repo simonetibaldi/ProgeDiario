@@ -54,7 +54,9 @@ function daArchivio(salvato) {
     // versioni 1 e 2: Blob o File salvati direttamente, i più vecchi senza nome
     ? new File([f], f.name || `${salvato.data}_${salvato.id}_${i + 1}.jpg`, { type: 'image/jpeg' })
     : new File([f.dati], f.nome, { type: 'image/jpeg' })));
-  return { ...salvato, ora: salvato.ora || '', foto };
+  // I tag scritti prima della maiuscola obbligatoria la prendono qui (e i doppioni si fondono).
+  const tags = [...new Set(salvato.tags.map(maiuscolaIniziale))];
+  return { ...salvato, ora: salvato.ora || '', tags, foto };
 }
 
 const leggiPosts = async () => (await conStore('readonly', (s) => s.getAll())).map(daArchivio);
@@ -82,6 +84,11 @@ function el(tag, props = {}, ...figli) {
 
 function nuovoId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+// I tag cominciano sempre con la maiuscola: "viaggi" diventa "Viaggi".
+function maiuscolaIniziale(testo) {
+  return testo.charAt(0).toLocaleUpperCase('it') + testo.slice(1);
 }
 
 // 'AAAA-MM-GG' da anno, mese (0 = gennaio) e giorno
@@ -310,7 +317,7 @@ function disegnaTagModulo() {
 
 // Aggiunge un tag al modulo; se esiste già scritto diversamente (maiuscole) riusa quello.
 function aggiungiTag(grezzo) {
-  const nome = grezzo.trim().replace(/\s+/g, ' ');
+  const nome = maiuscolaIniziale(grezzo.trim().replace(/\s+/g, ' '));
   if (nome) {
     const uguale = (t) => t.toLowerCase() === nome.toLowerCase();
     if (!formTags.some(uguale)) formTags.push(tuttiITags().find(uguale) || nome);
