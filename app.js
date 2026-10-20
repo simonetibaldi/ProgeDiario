@@ -501,6 +501,8 @@ async function prendiDaCartella(nome) {
 
 const BACKUP_VERSIONE = 2; // la 1 non aveva l'ora nei post
 const CHIAVE_ULTIMO_BACKUP = 'diario.ultimoBackup';
+// I ricordi sono già copiati sul Drive: il promemoria si accende solo dopo un mese dall'ultimo backup.
+const GIORNI_PROMEMORIA = 30;
 
 let backupPronto = null; // { file, quando } in attesa di essere salvato dall'utente
 
@@ -530,7 +532,8 @@ function aggiornaStatoBackup() {
       (daSalvare ? `Da allora ${nRicordi(daSalvare)} tra nuovi e modificati.` : 'È tutto salvato.');
   }
   $('backup-stato').textContent = stato;
-  $('btn-backup').classList.toggle('da-fare', daSalvare > 0);
+  const scaduto = Date.now() - ultimo > GIORNI_PROMEMORIA * 24 * 60 * 60 * 1000;
+  $('btn-backup').classList.toggle('da-fare', daSalvare > 0 && scaduto);
   $('btn-esporta').textContent = 'Esporta backup';
   $('btn-esporta').disabled = !posts.length;
 }
