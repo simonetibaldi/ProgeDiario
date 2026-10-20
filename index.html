@@ -70,6 +70,12 @@
         <div id="tag-suggeriti" class="chips suggeriti"></div>
       </div>
 
+      <div class="campo">
+        <span>Umore</span>
+        <div id="umore-scelte" class="chips"></div>
+        <input type="text" id="campo-umore" placeholder="Un altro umore? Scrivilo e premi Invio" autocomplete="off" autocapitalize="sentences">
+      </div>
+
       <button type="button" id="btn-elimina" class="btn-pericolo" hidden>Elimina ricordo</button>
     </form>
   </dialog>
@@ -91,6 +97,28 @@
     <p id="cartella-stato"></p>
     <button type="button" id="btn-drive" class="btn-secondario" hidden>Collega Google Drive</button>
     <button type="button" id="btn-chiudi-backup" class="btn-testo">Chiudi</button>
+  </dialog>
+
+  <!-- Giornata: le attività di un giorno -->
+  <dialog id="dlg-giornata" class="dlg-post">
+    <form id="form-giornata" method="dialog">
+      <div class="dlg-barra">
+        <button type="button" id="btn-annulla-giornata" class="btn-testo">Annulla</button>
+        <h2>Giornata</h2>
+        <button type="submit" class="btn-primario">Salva</button>
+      </div>
+
+      <label class="campo">
+        <span>Giorno</span>
+        <input type="date" id="campo-giornata-data" required>
+      </label>
+
+      <div class="campo">
+        <span>Cosa hai fatto</span>
+        <div id="elenco-attivita" class="elenco-attivita"></div>
+        <input type="text" id="campo-attivita" placeholder="Un'altra attività? Scrivila e premi Invio" autocomplete="off" autocapitalize="sentences">
+      </div>
+    </form>
   </dialog>
 
   <!-- Statistiche -->

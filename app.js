@@ -4,9 +4,14 @@
 // Archivio (IndexedDB)
 //
 // Un post ha questa forma:
-//   { id, data: 'AAAA-MM-GG', ora: 'HH:MM', testo, tags: ['Viaggi', ...], foto: [File, ...],
-//     creato: timestamp, modificato: timestamp }
-// L'ora è '' se non è indicata.
+//   { id, data: 'AAAA-MM-GG', ora: 'HH:MM', testo, tags: ['Viaggi', ...], umore: 'Felice',
+//     foto: [File, ...], creato: timestamp, modificato: timestamp }
+// L'ora e l'umore sono '' se non sono indicati.
+//
+// Nello stesso archivio stanno le giornate (le attività di un giorno, vedi
+// "Giornata"), che viaggiano come i ricordi:
+//   { id: 'giornata-AAAA-MM-GG', tipo: 'giornata', data, attivita: [{ nome, ore }],
+//     foto: [], creato, modificato }        ore è un numero oppure null
 // Il nome di ogni File è quello che la foto ha nella cartella photos/.
 //
 // Nell'archivio le foto non sono File ma { nome, dati: ArrayBuffer }: Safari
@@ -20,7 +25,7 @@
 // ---------------------------------------------------------------------------
 
 const DB_NOME = 'diario';
-const DB_VERSIONE = 4;
+const DB_VERSIONE = 5;
 const STORE = 'posts';
 
 const dbPronto = new Promise((resolve, reject) => {
@@ -49,12 +54,12 @@ async function perArchivio(post) {
 }
 
 function daArchivio(salvato) {
-  if (salvato.eliminato) return salvato;
+  if (salvato.eliminato || salvato.tipo === 'giornata') return salvato;
   const foto = salvato.foto.map((f, i) => (f instanceof Blob
     // versioni 1 e 2: Blob o File salvati direttamente, i più vecchi senza nome
     ? new File([f], f.name || `${salvato.data}_${salvato.id}_${i + 1}.jpg`, { type: 'image/jpeg' })
     : new File([f.dati], f.nome, { type: 'image/jpeg' })));
-  return { ...salvato, ora: salvato.ora || '', foto };
+  return { ...salvato, ora: salvato.ora || '', umore: salvato.umore || '', foto };
 }
 
 const leggiPosts = async () => (await conStore('readonly', (s) => s.getAll())).map(daArchivio);
@@ -95,7 +100,7 @@ function maiuscolaIniziale(testo) {
 async function correggiTag(tutti) {
   let corretti = 0;
   for (const p of tutti) {
-    if (p.eliminato || p.tags.every((t) => t === maiuscolaIniziale(t))) continue;
+    if (p.eliminato || p.tipo === 'giornata' || p.tags.every((t) => t === maiuscolaIniziale(t))) continue;
     try {
       await salvaPost({ ...p, tags: [...new Set(p.tags.map(maiuscolaIniziale))], modificato: Date.now() });
       corretti++;
@@ -164,12 +169,14 @@ function conNome(foto, data) {
 
 let posts = [];
 let eliminati = []; // segnaposto dei ricordi eliminati
+let giornate = []; // le attività segnate giorno per giorno
 let filtroTag = null;
 
 // Stato del modulo aperto
 let inModifica = null; // post in modifica, oppure null se è nuovo
 let formFoto = [];
 let formTags = [];
+let formUmore = '';
 
 // URL temporanei delle immagini mostrate, da liberare a ogni ridisegno
 let urlTimeline = [];
@@ -192,7 +199,8 @@ async function ricarica() {
   const tutti = await leggiPosts();
   if (await correggiTag(tutti)) return ricarica();
   eliminati = tutti.filter((p) => p.eliminato);
-  posts = tutti.filter((p) => !p.eliminato);
+  giornate = tutti.filter((p) => p.tipo === 'giornata');
+  posts = tutti.filter((p) => !p.eliminato && p.tipo !== 'giornata');
   posts.sort((a, b) => b.data.localeCompare(a.data) || b.ora.localeCompare(a.ora) || b.creato - a.creato);
   if (filtroTag && !tuttiITags().includes(filtroTag)) filtroTag = null;
   disegnaFiltri();
@@ -220,24 +228,34 @@ function disegnaTimeline() {
   urlTimeline = [];
 
   const visibili = filtroTag ? posts.filter((p) => p.tags.includes(filtroTag)) : posts;
-  if (!visibili.length) {
-    $('timeline').replaceChildren(el('p', {
-      className: 'vuoto',
-      textContent: 'Ancora nessun ricordo. Tocca + per scrivere il primo.',
-    }));
-    return;
-  }
 
   // Un riquadro per giorno, con dentro i ricordi di quel giorno (i post sono già in ordine).
+  // Senza filtro compaiono anche i giorni che hanno solo attività segnate.
   const giorni = new Map();
   for (const p of visibili) giorni.set(p.data, [...(giorni.get(p.data) || []), p]);
-  $('timeline').replaceChildren(...[...giorni].map(([data, delGiorno]) => el('section', { className: 'giorno', id: 'giorno-' + data },
-    el('div', { className: 'giorno-testa' },
-      el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
-      el('button', { className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, data) }),
-    ),
-    ...delGiorno.map(disegnaPost),
-  )));
+  if (!filtroTag) {
+    for (const g of giornate) if (g.attivita.length && !giorni.has(g.data)) giorni.set(g.data, []);
+  }
+  const date = [...giorni.keys()].sort((a, b) => b.localeCompare(a));
+
+  const contenuto = filtroTag ? [] : [disegnaOggi()];
+  if (!date.length) {
+    contenuto.push(el('p', { className: 'vuoto', textContent: 'Ancora nessun ricordo. Tocca + per scrivere il primo.' }));
+  }
+  for (const data of date) {
+    const giornata = giornataDel(data);
+    contenuto.push(el('section', { className: 'giorno', id: 'giorno-' + data },
+      el('div', { className: 'giorno-testa' },
+        el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
+        el('button', { className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, data) }),
+      ),
+      giornata && giornata.attivita.length
+        ? el('button', { className: 'giorno-attivita', textContent: testoAttivita(giornata), onclick: () => apriGiornata(data) })
+        : '',
+      ...giorni.get(data).map(disegnaPost),
+    ));
+  }
+  $('timeline').replaceChildren(...contenuto);
 }
 
 function disegnaPost(post) {
@@ -255,7 +273,7 @@ function disegnaPost(post) {
 
   const corpo = el('div', { className: 'post-corpo' },
     el('div', { className: 'post-testa' },
-      el('span', { className: 'post-ora', textContent: post.ora }),
+      el('span', { className: 'post-ora', textContent: [post.ora, post.umore].filter(Boolean).join(' · ') }),
       el('button', { className: 'btn-testo', textContent: 'Modifica', onclick: () => apriModulo(post) }),
     ),
   );
@@ -282,17 +300,20 @@ function apriModulo(post = null, giorno = oggi()) {
   inModifica = post;
   formFoto = post ? [...post.foto] : [];
   formTags = post ? [...post.tags] : [];
+  formUmore = post ? post.umore : '';
 
   $('dlg-titolo').textContent = post ? 'Modifica ricordo' : 'Nuovo ricordo';
   $('campo-data').value = post ? post.data : giorno;
   $('campo-ora').value = post ? post.ora : (giorno === oggi() ? oraAdesso() : '');
   $('campo-testo').value = post ? post.testo : '';
   $('campo-tag').value = '';
+  $('campo-umore').value = '';
   $('btn-elimina').hidden = !post;
   $('btn-cartella').hidden = !cartella;
 
   disegnaAnteprime();
   disegnaTagModulo();
+  disegnaUmoreModulo();
   $('dlg-post').showModal();
 }
 
@@ -349,8 +370,39 @@ function aggiungiTag(grezzo) {
   disegnaTagModulo();
 }
 
+// Umori già pronti; quelli aggiunti a mano si ricavano dai post, come i tag.
+const UMORI_DI_BASE = ['Felice', 'Sereno', 'Entusiasta', 'Grato', 'Innamorato', 'Nostalgico', 'Stanco', 'Annoiato', 'Ansioso', 'Triste', 'Arrabbiato'];
+
+// Gli umori da proporre: prima quelli usati di più, poi quelli di base
+function tuttiGliUmori() {
+  const conteggio = new Map();
+  for (const p of posts) if (p.umore) conteggio.set(p.umore, (conteggio.get(p.umore) || 0) + 1);
+  const usati = [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a));
+  return [...new Set([...usati, ...UMORI_DI_BASE])];
+}
+
+// Un umore solo per ricordo: toccarne un altro lo sostituisce, toccare quello scelto lo toglie.
+function disegnaUmoreModulo() {
+  const umori = [...new Set([...(formUmore ? [formUmore] : []), ...tuttiGliUmori()])];
+  $('umore-scelte').replaceChildren(...umori.map((u) => el('button', {
+    type: 'button',
+    className: 'chip' + (u === formUmore ? ' attivo' : ''),
+    textContent: u,
+    onclick: () => { formUmore = formUmore === u ? '' : u; disegnaUmoreModulo(); },
+  })));
+}
+
+// Un umore scritto a mano; se esiste già scritto diversamente (maiuscole) riusa quello.
+function scegliUmore(grezzo) {
+  const nome = maiuscolaIniziale(grezzo.trim().replace(/\s+/g, ' '));
+  if (nome) formUmore = tuttiGliUmori().find((u) => u.toLowerCase() === nome.toLowerCase()) || nome;
+  $('campo-umore').value = '';
+  disegnaUmoreModulo();
+}
+
 async function salvaModulo() {
   aggiungiTag($('campo-tag').value); // un tag scritto ma non confermato vale comunque
+  if ($('campo-umore').value.trim()) scegliUmore($('campo-umore').value); // lo stesso per l'umore
 
   const testo = $('campo-testo').value.trim();
   if (!testo && !formFoto.length) {
@@ -366,11 +418,146 @@ async function salvaModulo() {
     ora: $('campo-ora').value,
     testo,
     tags: formTags,
+    umore: formUmore,
     foto: conNome(formFoto, data),
     creato: inModifica ? inModifica.creato : adesso,
     modificato: adesso,
   });
   chiudiModulo();
+  await ricarica();
+}
+
+// ---------------------------------------------------------------------------
+// Giornata
+//
+// Le attività di un giorno (Lavoro, Palestra...), ognuna con le ore se si
+// vogliono indicare. Si segnano dalla striscia "Oggi" in cima alla timeline,
+// o toccando la riga delle attività di un giorno; nella finestra si può anche
+// cambiare data. Un giorno ha una sola giornata (id 'giornata-AAAA-MM-GG').
+// ---------------------------------------------------------------------------
+
+const ATTIVITA_DI_BASE = ['Lavoro', 'Smart', 'Ferie', 'Uncinetto', 'Tromba', 'Musical', 'Palestra', 'Calisthenics'];
+
+let formAttivita = new Map(); // nome -> ore (numero) oppure null
+
+const giornataDel = (data) => giornate.find((g) => g.data === data);
+
+// 1.5 -> '1h30', 8 -> '8h', 0.25 -> '15min'
+function testoOre(ore) {
+  const h = Math.floor(ore);
+  const m = Math.round((ore - h) * 60);
+  if (!m) return `${h}h`;
+  return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
+}
+
+function testoAttivita(giornata) {
+  return giornata.attivita.map((a) => (a.ore ? `${a.nome} ${testoOre(a.ore)}` : a.nome)).join(' · ');
+}
+
+// La striscia in cima alla timeline
+function disegnaOggi() {
+  const giornata = giornataDel(oggi());
+  return el('button', { className: 'oggi', onclick: () => apriGiornata(oggi()) },
+    el('span', { className: 'oggi-titolo', textContent: 'Oggi' }),
+    el('span', {
+      className: 'oggi-attivita',
+      textContent: giornata && giornata.attivita.length ? testoAttivita(giornata) : 'Cosa hai fatto? Tocca per segnarlo',
+    }));
+}
+
+// Le attività da proporre: prima quelle usate più spesso, poi quelle di base
+function tutteLeAttivita() {
+  const conteggio = new Map();
+  for (const g of giornate) for (const a of g.attivita) conteggio.set(a.nome, (conteggio.get(a.nome) || 0) + 1);
+  const usate = [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a));
+  return [...new Set([...usate, ...ATTIVITA_DI_BASE])];
+}
+
+function apriGiornata(data) {
+  $('campo-giornata-data').max = oggi();
+  $('campo-giornata-data').value = data;
+  caricaGiornata(data);
+  $('dlg-giornata').showModal();
+}
+
+function caricaGiornata(data) {
+  const giornata = giornataDel(data);
+  formAttivita = new Map(giornata ? giornata.attivita.map((a) => [a.nome, a.ore]) : []);
+  $('campo-attivita').value = '';
+  disegnaAttivitaModulo();
+}
+
+// Le ore da rimettere nel campo, in una forma che leggiOre rilegge: 8 -> '8', 0.25 -> '0h15'
+function oreNelCampo(ore) {
+  const h = Math.floor(ore);
+  const m = Math.round((ore - h) * 60);
+  return m ? `${h}h${String(m).padStart(2, '0')}` : String(h);
+}
+
+// "1,5", "1.5", "1h30" o "1:30" -> 1.5; vuoto o non valido -> null
+function leggiOre(testo) {
+  const oreMinuti = testo.trim().match(/^(\d+)\s*[h:]\s*(\d{1,2})$/i);
+  const ore = oreMinuti ? Number(oreMinuti[1]) + Number(oreMinuti[2]) / 60 : parseFloat(testo.replace(',', '.'));
+  return ore > 0 ? ore : null;
+}
+
+function disegnaAttivitaModulo() {
+  const nomi = [...new Set([...formAttivita.keys(), ...tutteLeAttivita()])];
+  $('elenco-attivita').replaceChildren(...nomi.map((nome) => {
+    const scelta = formAttivita.has(nome);
+    return el('div', { className: 'attivita-riga' },
+      el('button', {
+        type: 'button',
+        className: 'chip' + (scelta ? ' attivo' : ''),
+        textContent: nome,
+        onclick: () => {
+          if (scelta) formAttivita.delete(nome);
+          else formAttivita.set(nome, null);
+          disegnaAttivitaModulo();
+        },
+      }),
+      scelta ? el('input', {
+        type: 'text',
+        inputMode: 'decimal',
+        className: 'campo-ore',
+        placeholder: 'ore (facoltative)',
+        value: formAttivita.get(nome) ? oreNelCampo(formAttivita.get(nome)) : '',
+        oninput: (e) => formAttivita.set(nome, leggiOre(e.target.value)),
+      }) : '',
+    );
+  }));
+}
+
+// Un'attività scritta a mano; se esiste già scritta diversamente (maiuscole) riusa quella.
+function aggiungiAttivita(grezzo) {
+  const nome = maiuscolaIniziale(grezzo.trim().replace(/\s+/g, ' '));
+  if (nome) {
+    const esistente = [...formAttivita.keys(), ...tutteLeAttivita()].find((a) => a.toLowerCase() === nome.toLowerCase());
+    if (!formAttivita.has(esistente || nome)) formAttivita.set(esistente || nome, null);
+  }
+  $('campo-attivita').value = '';
+  disegnaAttivitaModulo();
+}
+
+async function salvaGiornata() {
+  aggiungiAttivita($('campo-attivita').value); // un'attività scritta ma non confermata vale comunque
+  const data = $('campo-giornata-data').value || oggi();
+  const esistente = giornataDel(data);
+  const attivita = [...formAttivita].map(([nome, ore]) => ({ nome, ore }));
+  // Una giornata svuotata si salva lo stesso, così lo svuotamento arriva agli altri dispositivi.
+  if (attivita.length || esistente) {
+    const adesso = Date.now();
+    await salvaPost({
+      id: 'giornata-' + data,
+      tipo: 'giornata',
+      data,
+      attivita,
+      foto: [],
+      creato: esistente ? esistente.creato : adesso,
+      modificato: adesso,
+    });
+  }
+  $('dlg-giornata').close();
   await ricarica();
 }
 
@@ -610,11 +797,12 @@ function disegnaMese(anno, mese, conRicordi) {
     griglia);
 }
 
-// Un giorno con ricordi: lo mostra nella timeline. Un giorno vuoto: apre un ricordo nuovo per quel giorno.
+// Un giorno con ricordi o attività: lo mostra nella timeline. Un giorno vuoto: apre un ricordo nuovo per quel giorno.
 function vaiAlGiorno(data) {
   $('dlg-calendario').close();
   const delGiorno = posts.filter((p) => p.data === data);
-  if (!delGiorno.length) {
+  const giornata = giornataDel(data);
+  if (!delGiorno.length && !(giornata && giornata.attivita.length)) {
     apriModulo(null, data);
     return;
   }
@@ -722,7 +910,7 @@ async function sincronizza() {
   }
 
   const tutte = posts.flatMap((p) => p.foto);
-  const qui = [...posts, ...eliminati];
+  const qui = [...posts, ...eliminati, ...giornate];
   let presi = 0;
   try {
     const presenti = await deposito.elencoFoto();
@@ -794,7 +982,7 @@ async function prendiDaCartella(nome) {
 //   foto/NOME.jpg          le foto, col nome che hanno nella cartella photos/
 // ---------------------------------------------------------------------------
 
-const BACKUP_VERSIONE = 2; // la 1 non aveva l'ora nei post
+const BACKUP_VERSIONE = 3; // la 1 non aveva l'ora nei post, la 2 né l'umore né le giornate
 const CHIAVE_ULTIMO_BACKUP = 'diario.ultimoBackup';
 // I ricordi sono già copiati sul Drive: il promemoria si accende solo dopo un mese dall'ultimo backup.
 const GIORNI_PROMEMORIA = 30;
@@ -836,7 +1024,7 @@ function aggiornaStatoBackup() {
 async function preparaBackup() {
   const quando = Date.now();
   const voci = [];
-  const elenco = posts.map((p) => {
+  const elenco = [...posts, ...giornate].map((p) => {
     const nomi = p.foto.map((blob) => {
       const nome = 'foto/' + blob.name;
       voci.push({ nome, blob });
@@ -916,17 +1104,18 @@ async function importa(file) {
 // Da un ricordo salvato fuori dall'archivio (backup o deposito), dove `foto` è un elenco
 // di nomi, a un post: leggiFoto(nome) restituisce il contenuto di una foto.
 async function daSalvato(ricordo, leggiFoto) {
+  if (ricordo.tipo === 'giornata') return ricordo;
   const foto = [];
   for (const nome of ricordo.foto) {
     foto.push(new File([await leggiFoto(nome)], nome.split('/').pop(), { type: 'image/jpeg' }));
   }
-  return { ...ricordo, ora: ricordo.ora || '', foto };
+  return { ...ricordo, ora: ricordo.ora || '', umore: ricordo.umore || '', foto };
 }
 
 // Aggiunge i ricordi che mancano; se uno esiste già (anche eliminato) vince la versione
 // modificata più di recente.
 async function unisci(ricordi, leggiFoto) {
-  const esistenti = new Map([...posts, ...eliminati].map((p) => [p.id, p]));
+  const esistenti = new Map([...posts, ...eliminati, ...giornate].map((p) => [p.id, p]));
   let aggiunti = 0, aggiornati = 0, invariati = 0;
   for (const p of ricordi) {
     const attuale = esistenti.get(p.id);
@@ -1004,6 +1193,26 @@ $('campo-tag').addEventListener('keydown', (e) => {
   }
 });
 $('campo-tag').addEventListener('input', disegnaTagModulo);
+
+$('campo-umore').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault(); // Invio qui sceglie l'umore, non salva il post
+    scegliUmore(e.target.value);
+  }
+});
+
+$('btn-annulla-giornata').onclick = () => $('dlg-giornata').close();
+$('campo-giornata-data').addEventListener('change', (e) => caricaGiornata(e.target.value || oggi()));
+$('form-giornata').addEventListener('submit', (e) => {
+  e.preventDefault();
+  salvaGiornata().catch(mostraErrore);
+});
+$('campo-attivita').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault(); // Invio qui aggiunge l'attività, non salva
+    aggiungiAttivita(e.target.value);
+  }
+});
 
 $('dlg-foto').onclick = () => $('dlg-foto').close();
 

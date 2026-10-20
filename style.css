@@ -151,6 +151,34 @@ button { cursor: pointer; }
 }
 .giorno-data::first-letter { text-transform: uppercase; }
 
+/* Le attività del giorno, sotto la data */
+.giorno-attivita {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--bordo);
+  background: none;
+  padding: 8px 16px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--testo-tenue);
+}
+
+/* Striscia "Oggi" in cima alla timeline */
+.oggi {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  border: 1px dashed var(--accento);
+  border-radius: var(--raggio);
+  background: none;
+  padding: 12px 16px;
+  text-align: left;
+}
+.oggi-titolo { font-weight: 600; color: var(--accento); }
+.oggi-attivita { color: var(--testo-tenue); }
+
 /* Le foto stanno a sinistra, le scritte accanto */
 .post { display: flex; align-items: flex-start; border-top: 1px solid var(--bordo); }
 
@@ -296,6 +324,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
   padding: 10px 12px;
 }
 .campo textarea { resize: vertical; min-height: 120px; }
+
+/* Giornata: un'attività per riga, con le ore accanto se è scelta */
+.elenco-attivita { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.attivita-riga { display: flex; align-items: center; gap: 10px; }
+.campo .campo-ore { width: 10em; padding: 6px 10px; }
 
 .riga-data { display: flex; gap: 8px; }
 .riga-data input[type="time"] { width: auto; flex: none; }
