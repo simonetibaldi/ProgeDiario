@@ -175,9 +175,16 @@ let formTags = [];
 let urlTimeline = [];
 let urlAnteprime = [];
 
-function tuttiITags() {
+// Map(tag -> in quanti ricordi compare)
+function contaTag(elenco) {
   const conteggio = new Map();
-  for (const p of posts) for (const t of p.tags) conteggio.set(t, (conteggio.get(t) || 0) + 1);
+  for (const p of elenco) for (const t of p.tags) conteggio.set(t, (conteggio.get(t) || 0) + 1);
+  return conteggio;
+}
+
+// Tutti i tag, dal più usato
+function tuttiITags() {
+  const conteggio = contaTag(posts);
   return [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a) || a.localeCompare(b, 'it'));
 }
 
@@ -365,6 +372,99 @@ async function salvaModulo() {
   });
   chiudiModulo();
   await ricarica();
+}
+
+// ---------------------------------------------------------------------------
+// Statistiche
+//
+// Si ricalcolano dai post ogni volta che si apre la pagina. Per ora: quanti
+// ricordi ci sono e i tag (i più usati; per il tag scelto, mese per mese e con
+// quali altri tag compare). I grafici sono fatti di semplici elementi HTML.
+// ---------------------------------------------------------------------------
+
+const TAG_IN_CLASSIFICA = 15;
+const MESI_NEL_GRAFICO = 12;
+
+let tagScelto = null; // il tag mostrato in dettaglio; si sceglie toccandolo
+
+function apriStatistiche() {
+  disegnaStatistiche();
+  $('dlg-statistiche').showModal();
+}
+
+function scegliTag(tag) {
+  tagScelto = tag;
+  disegnaStatistiche();
+}
+
+function disegnaStatistiche() {
+  const conteggio = contaTag(posts);
+  const tags = tuttiITags();
+  if (!tags.includes(tagScelto)) tagScelto = tags[0] || null;
+
+  const contenuto = [
+    el('div', { className: 'stat-totale' },
+      el('strong', { textContent: posts.length }),
+      el('span', { textContent: posts.length === 1 ? 'ricordo' : 'ricordi' })),
+  ];
+
+  if (!tags.length) {
+    contenuto.push(el('p', { className: 'stat-nota', textContent: 'Ancora nessun tag: le statistiche dei tag compaiono quando ne usi qualcuno.' }));
+  } else {
+    const massimo = conteggio.get(tags[0]);
+    contenuto.push(
+      el('h3', { className: 'stat-titolo', textContent: 'Tag più usati' }),
+      el('div', { className: 'stat-classifica' }, ...tags.slice(0, TAG_IN_CLASSIFICA).map((t) => el('button', {
+        type: 'button',
+        className: 'stat-riga' + (t === tagScelto ? ' scelta' : ''),
+        onclick: () => scegliTag(t),
+      },
+      el('span', { className: 'stat-riga-nome', textContent: t }),
+      el('span', { className: 'stat-riga-barra', style: `width: ${(conteggio.get(t) / massimo) * 100}%` }),
+      el('span', { className: 'stat-riga-numero', textContent: conteggio.get(t) })))),
+      ...disegnaTagScelto(tagScelto),
+    );
+  }
+  $('statistiche-contenuto').replaceChildren(...contenuto);
+}
+
+function disegnaTagScelto(tag) {
+  const conTag = posts.filter((p) => p.tags.includes(tag));
+
+  // Ricordi con il tag in ognuno degli ultimi mesi, dal più vecchio
+  const adesso = new Date();
+  const mesi = [];
+  for (let i = MESI_NEL_GRAFICO - 1; i >= 0; i--) {
+    const inizio = new Date(adesso.getFullYear(), adesso.getMonth() - i, 1);
+    const prefisso = dataDa(inizio.getFullYear(), inizio.getMonth(), 1).slice(0, 8); // 'AAAA-MM-'
+    mesi.push({
+      nome: inizio.toLocaleDateString('it-IT', { month: 'short' }),
+      quanti: conTag.filter((p) => p.data.startsWith(prefisso)).length,
+    });
+  }
+  const massimo = Math.max(1, ...mesi.map((m) => m.quanti));
+
+  const compagni = contaTag(conTag);
+  compagni.delete(tag);
+  const classificaCompagni = [...compagni].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it')).slice(0, 10);
+
+  return [
+    el('h3', { className: 'stat-titolo', textContent: `${tag} negli ultimi ${MESI_NEL_GRAFICO} mesi` }),
+    el('div', { className: 'stat-mesi' }, ...mesi.map((m) => el('div', { className: 'stat-mese' },
+      el('span', { className: 'stat-mese-numero', textContent: m.quanti || '' }),
+      el('span', { className: 'stat-mese-pista' },
+        el('span', { className: 'stat-mese-colonna', style: `height: ${(m.quanti / massimo) * 100}%` })),
+      el('span', { className: 'stat-mese-nome', textContent: m.nome })))),
+    el('h3', { className: 'stat-titolo', textContent: `Insieme a ${tag}` }),
+    classificaCompagni.length
+      ? el('div', { className: 'chips' }, ...classificaCompagni.map(([t, n]) => el('button', {
+        type: 'button',
+        className: 'chip',
+        textContent: `${t} · ${n}`,
+        onclick: () => scegliTag(t),
+      })))
+      : el('p', { className: 'stat-nota', textContent: 'Finora non è mai comparso insieme ad altri tag.' }),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -786,6 +886,8 @@ $('campo-importa').addEventListener('change', (e) => {
 
 $('btn-nuovo').onclick = () => apriModulo();
 $('btn-calendario').onclick = apriCalendario;
+$('btn-statistiche').onclick = apriStatistiche;
+$('btn-chiudi-statistiche').onclick = () => $('dlg-statistiche').close();
 $('btn-chiudi-calendario').onclick = () => $('dlg-calendario').close();
 $('btn-annulla').onclick = chiudiModulo;
 $('dlg-post').addEventListener('cancel', (e) => { e.preventDefault(); chiudiModulo(); });

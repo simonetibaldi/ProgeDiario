@@ -18,6 +18,7 @@
       <h1>Diario</h1>
       <div class="testata-azioni">
         <button id="btn-calendario" class="btn-testo">Calendario</button>
+        <button id="btn-statistiche" class="btn-testo">Statistiche</button>
         <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
       </div>
     </div>
@@ -90,6 +91,15 @@
     <p id="cartella-stato"></p>
     <button type="button" id="btn-drive" class="btn-secondario" hidden>Collega Google Drive</button>
     <button type="button" id="btn-chiudi-backup" class="btn-testo">Chiudi</button>
+  </dialog>
+
+  <!-- Statistiche -->
+  <dialog id="dlg-statistiche" class="dlg-statistiche">
+    <div class="dlg-barra">
+      <h2>Statistiche</h2>
+      <button type="button" id="btn-chiudi-statistiche" class="btn-primario">Chiudi</button>
+    </div>
+    <div id="statistiche-contenuto" class="statistiche-contenuto"></div>
   </dialog>
 
   <!-- Calendario -->
