@@ -54,9 +54,7 @@ function daArchivio(salvato) {
     // versioni 1 e 2: Blob o File salvati direttamente, i più vecchi senza nome
     ? new File([f], f.name || `${salvato.data}_${salvato.id}_${i + 1}.jpg`, { type: 'image/jpeg' })
     : new File([f.dati], f.nome, { type: 'image/jpeg' })));
-  // I tag scritti prima della maiuscola obbligatoria la prendono qui (e i doppioni si fondono).
-  const tags = [...new Set(salvato.tags.map(maiuscolaIniziale))];
-  return { ...salvato, ora: salvato.ora || '', tags, foto };
+  return { ...salvato, ora: salvato.ora || '', foto };
 }
 
 const leggiPosts = async () => (await conStore('readonly', (s) => s.getAll())).map(daArchivio);
@@ -89,6 +87,23 @@ function nuovoId() {
 // I tag cominciano sempre con la maiuscola: "viaggi" diventa "Viaggi".
 function maiuscolaIniziale(testo) {
   return testo.charAt(0).toLocaleUpperCase('it') + testo.slice(1);
+}
+
+// I ricordi con tag scritti prima di questa regola vengono corretti e salvati come
+// modificati, così la correzione arriva anche al deposito e agli altri dispositivi.
+// Restituisce quanti ne ha corretti; se uno non si riesce a salvare resta com'è.
+async function correggiTag(tutti) {
+  let corretti = 0;
+  for (const p of tutti) {
+    if (p.eliminato || p.tags.every((t) => t === maiuscolaIniziale(t))) continue;
+    try {
+      await salvaPost({ ...p, tags: [...new Set(p.tags.map(maiuscolaIniziale))], modificato: Date.now() });
+      corretti++;
+    } catch (err) {
+      console.error('Tag non corretti per il ricordo ' + p.id, err);
+    }
+  }
+  return corretti;
 }
 
 // 'AAAA-MM-GG' da anno, mese (0 = gennaio) e giorno
@@ -168,6 +183,7 @@ function tuttiITags() {
 
 async function ricarica() {
   const tutti = await leggiPosts();
+  if (await correggiTag(tutti)) return ricarica();
   eliminati = tutti.filter((p) => p.eliminato);
   posts = tutti.filter((p) => !p.eliminato);
   posts.sort((a, b) => b.data.localeCompare(a.data) || b.ora.localeCompare(a.ora) || b.creato - a.creato);
