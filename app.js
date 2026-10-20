@@ -377,13 +377,34 @@ async function salvaModulo() {
 // ---------------------------------------------------------------------------
 // Statistiche
 //
-// Si ricalcolano dai post ogni volta che si apre la pagina. Per ora: quanti
-// ricordi ci sono e i tag (i più usati; per il tag scelto, mese per mese e con
-// quali altri tag compare). I grafici sono fatti di semplici elementi HTML.
+// Si ricalcolano dai post ogni volta che si apre la pagina: quanti ricordi ci
+// sono, i tag (i più usati; per il tag scelto, mese per mese e con quali altri
+// tag compare), le parole e i nomi più citati nei testi. I grafici sono fatti
+// di semplici elementi HTML.
 // ---------------------------------------------------------------------------
 
 const TAG_IN_CLASSIFICA = 15;
+const PAROLE_IN_CLASSIFICA = 15;
 const MESI_NEL_GRAFICO = 12;
+
+// Parole troppo comuni per dire qualcosa: non entrano nella classifica.
+// Quelle di una o due lettere sono già escluse.
+const PAROLE_VUOTE = new Set(`
+  il lo la le gli una uno un del dello della dei degli delle dell nel nello nella nei negli nelle nell
+  al allo alla ai agli alle all dal dallo dalla dai dagli dalle dall sul sullo sulla sui sugli sulle sull
+  col coi con per tra fra che chi cui non come dove quando perché perche mentre anche ancora
+  già gia poi dopo prima ora adesso sempre mai più piu meno molto molta molti molte tanto tanta tanti
+  tante poco troppo tutto tutta tutti tutte altro altra altri altre stesso stessa questo questa questi
+  queste quello quella quelli quelle quel ogni qualche nessuno niente cosa cose così cosi bene male
+  solo sola però pero quindi oppure infatti invece insieme verso senza sotto sopra dentro fuori
+  mio mia miei mie tuo tua tuoi tue suo sua suoi sue nostro nostra nostri nostre loro lui lei noi voi
+  essi esse sono sei siamo siete era ero eri erano eravamo stato stata stati state essere sarà sara
+  sarebbe fosse hai abbiamo avete hanno avuto avere avevo aveva avevamo avevano fatto fatta fatti
+  fare faccio fa fanno facciamo andato andata andati andate andare vado andiamo stato sto stavo
+  stavamo stare può puo posso possiamo devo deve dobbiamo voglio vuole volevo detto dire dice
+  oggi ieri domani giorno giornata sera stasera mattina notte volta volte anno anni mese
+  ecco qui qua lì li là sia nemmeno neanche proprio davvero
+`.split(/\s+/).filter(Boolean));
 
 let tagScelto = null; // il tag mostrato in dettaglio; si sceglie toccandolo
 
@@ -397,10 +418,54 @@ function scegliTag(tag) {
   disegnaStatistiche();
 }
 
+// voci: [[nome, numero], ...] dal più grande. Con quandoTocchi le righe sono pulsanti.
+function disegnaClassifica(voci, scelto = null, quandoTocchi = null) {
+  const massimo = voci.length ? voci[0][1] : 1;
+  return el('div', { className: 'stat-classifica' }, ...voci.map(([nome, numero]) => el(quandoTocchi ? 'button' : 'div', {
+    type: 'button',
+    className: 'stat-riga' + (nome === scelto ? ' scelta' : ''),
+    onclick: quandoTocchi && (() => quandoTocchi(nome)),
+  },
+  el('span', { className: 'stat-riga-nome', textContent: nome }),
+  el('span', { className: 'stat-riga-barra', style: `width: ${(numero / massimo) * 100}%` }),
+  el('span', { className: 'stat-riga-numero', textContent: numero }))));
+}
+
+// Le N voci più grandi di una Map(nome -> numero)
+function primi(conteggio, n) {
+  return [...conteggio].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it')).slice(0, n);
+}
+
+// Conta le parole dei testi. Le parole scritte in minuscolo vanno in `parole`; quelle con
+// la maiuscola in mezzo a una frase vanno in `nomi` (persone, posti), purché non compaiano
+// mai anche in minuscolo: così "Mare" scritto per enfasi non diventa un nome.
+function analizzaTesti(elenco) {
+  const parole = new Map();
+  const maiuscole = new Map();
+  for (const p of elenco) {
+    for (const trovata of p.testo.matchAll(/\p{L}+/gu)) {
+      const parola = trovata[0];
+      if (parola.length < 3) continue;
+      const minuscola = parola.toLocaleLowerCase('it');
+      if (parola === minuscola) {
+        if (!PAROLE_VUOTE.has(parola)) parole.set(parola, (parole.get(parola) || 0) + 1);
+        continue;
+      }
+      // Maiuscola a inizio frase: non dice niente.
+      const prima = p.testo.slice(0, trovata.index).trimEnd();
+      if (!prima || /[.!?:\n]$/.test(prima)) continue;
+      if (!PAROLE_VUOTE.has(minuscola)) maiuscole.set(parola, (maiuscole.get(parola) || 0) + 1);
+    }
+  }
+  const nomi = new Map([...maiuscole].filter(([nome]) => !parole.has(nome.toLocaleLowerCase('it'))));
+  return { parole, nomi };
+}
+
 function disegnaStatistiche() {
   const conteggio = contaTag(posts);
   const tags = tuttiITags();
   if (!tags.includes(tagScelto)) tagScelto = tags[0] || null;
+  const { parole, nomi } = analizzaTesti(posts);
 
   const contenuto = [
     el('div', { className: 'stat-totale' },
@@ -411,20 +476,23 @@ function disegnaStatistiche() {
   if (!tags.length) {
     contenuto.push(el('p', { className: 'stat-nota', textContent: 'Ancora nessun tag: le statistiche dei tag compaiono quando ne usi qualcuno.' }));
   } else {
-    const massimo = conteggio.get(tags[0]);
     contenuto.push(
       el('h3', { className: 'stat-titolo', textContent: 'Tag più usati' }),
-      el('div', { className: 'stat-classifica' }, ...tags.slice(0, TAG_IN_CLASSIFICA).map((t) => el('button', {
-        type: 'button',
-        className: 'stat-riga' + (t === tagScelto ? ' scelta' : ''),
-        onclick: () => scegliTag(t),
-      },
-      el('span', { className: 'stat-riga-nome', textContent: t }),
-      el('span', { className: 'stat-riga-barra', style: `width: ${(conteggio.get(t) / massimo) * 100}%` }),
-      el('span', { className: 'stat-riga-numero', textContent: conteggio.get(t) })))),
+      disegnaClassifica(tags.slice(0, TAG_IN_CLASSIFICA).map((t) => [t, conteggio.get(t)]), tagScelto, scegliTag),
       ...disegnaTagScelto(tagScelto),
     );
   }
+
+  contenuto.push(
+    el('h3', { className: 'stat-titolo', textContent: 'Persone e posti più citati' }),
+    nomi.size
+      ? disegnaClassifica(primi(nomi, PAROLE_IN_CLASSIFICA))
+      : el('p', { className: 'stat-nota', textContent: 'Compaiono qui i nomi scritti con la maiuscola nei testi.' }),
+    el('h3', { className: 'stat-titolo', textContent: 'Parole più usate' }),
+    parole.size
+      ? disegnaClassifica(primi(parole, PAROLE_IN_CLASSIFICA))
+      : el('p', { className: 'stat-nota', textContent: 'Ancora nessuna parola da contare.' }),
+  );
   $('statistiche-contenuto').replaceChildren(...contenuto);
 }
 
@@ -446,7 +514,7 @@ function disegnaTagScelto(tag) {
 
   const compagni = contaTag(conTag);
   compagni.delete(tag);
-  const classificaCompagni = [...compagni].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it')).slice(0, 10);
+  const classificaCompagni = primi(compagni, 10);
 
   return [
     el('h3', { className: 'stat-titolo', textContent: `${tag} negli ultimi ${MESI_NEL_GRAFICO} mesi` }),
