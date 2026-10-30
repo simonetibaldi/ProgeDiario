@@ -84,8 +84,6 @@ button { cursor: pointer; }
   vertical-align: middle;
 }
 
-.testata-azioni { display: flex; gap: 12px; }
-
 .testata h1 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -444,16 +442,14 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 /* Statistiche */
 
-.dlg-statistiche {
-  width: min(640px, 100vw);
-  max-width: 100vw;
-  height: 100dvh;
-  max-height: 100dvh;
+.pagina-statistiche {
+  max-width: 640px;
   margin: 0 auto;
-  background: var(--sfondo);
-  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 20px 16px calc(90px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.statistiche-contenuto { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; }
 
 .stat-totale { display: flex; align-items: baseline; gap: 8px; }
 .stat-totale strong {
@@ -501,17 +497,15 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 /* Calendario */
 
-.dlg-calendario {
-  width: min(640px, 100vw);
-  max-width: 100vw;
-  height: 100dvh;
-  max-height: 100dvh;
+.pagina-calendario {
+  max-width: 640px;
   margin: 0 auto;
-  background: var(--sfondo);
-  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(90px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
-.calendario-mesi { display: flex; flex-direction: column; gap: 24px; padding-top: 16px; }
-.calendario-mesi > .btn-secondario { align-self: center; }
+.pagina-calendario > .btn-secondario { align-self: center; }
 
 .mese-titolo {
   margin: 0 0 8px;

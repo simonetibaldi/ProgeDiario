@@ -209,8 +209,7 @@ async function ricarica() {
   posts.sort((a, b) => b.data.localeCompare(a.data) || b.ora.localeCompare(a.ora) || b.creato - a.creato);
   if (filtroTag && !tuttiITags().includes(filtroTag)) filtroTag = null;
   disegnaFiltri();
-  if ($('timeline').hidden) disegnaOggi();
-  else disegnaTimeline();
+  disegnaPagina();
   aggiornaStatoBackup();
   codaCopia = codaCopia.then(sincronizza);
 }
@@ -646,18 +645,31 @@ function disegnaOggi() {
   }
 }
 
-// Le due pagine: Oggi e Diario. La timeline si ridisegna solo quando serve, perché ha le foto.
+// Le pagine della barra in basso, ognuna col suo elemento e la sua funzione di disegno.
+// Si ridisegna solo quella mostrata, perché la timeline ha le foto.
+const PAGINE = {
+  oggi: { elemento: 'pagina-oggi', disegna: disegnaOggi },
+  diario: { elemento: 'timeline', disegna: disegnaTimeline },
+  calendario: { elemento: 'pagina-calendario', disegna: disegnaCalendario },
+  statistiche: { elemento: 'pagina-statistiche', disegna: disegnaStatistiche },
+};
+let paginaAttuale = 'oggi';
+
+function disegnaPagina() {
+  PAGINE[paginaAttuale].disegna();
+}
+
 function mostraPagina(pagina) {
-  const diario = pagina === 'diario';
-  $('pagina-oggi').hidden = diario;
-  $('timeline').hidden = !diario;
-  $('filtri').hidden = !diario;
-  $('btn-nuovo').hidden = !diario;
-  $('btn-pagina-oggi').classList.toggle('attiva', !diario);
-  $('btn-pagina-diario').classList.toggle('attiva', diario);
-  if (diario) disegnaTimeline();
-  else disegnaOggi();
-  window.scrollTo(0, 0);
+  paginaAttuale = pagina;
+  for (const [nome, { elemento }] of Object.entries(PAGINE)) {
+    $(elemento).hidden = nome !== pagina;
+    $('btn-pagina-' + nome).classList.toggle('attiva', nome === pagina);
+  }
+  $('filtri').hidden = pagina !== 'diario';
+  $('btn-nuovo').hidden = pagina !== 'diario';
+  disegnaPagina();
+  // Il calendario parte dal fondo, dove c'è il mese corrente.
+  window.scrollTo(0, pagina === 'calendario' ? document.documentElement.scrollHeight : 0);
 }
 
 function apriGiorno(data) {
@@ -698,11 +710,6 @@ const PAROLE_VUOTE = new Set(`
 `.split(/\s+/).filter(Boolean));
 
 let tagScelto = null; // il tag mostrato in dettaglio; si sceglie toccandolo
-
-function apriStatistiche() {
-  disegnaStatistiche();
-  $('dlg-statistiche').showModal();
-}
 
 function scegliTag(tag) {
   tagScelto = tag;
@@ -784,7 +791,7 @@ function disegnaStatistiche() {
       ? disegnaClassifica(primi(parole, PAROLE_IN_CLASSIFICA))
       : el('p', { className: 'stat-nota', textContent: 'Ancora nessuna parola da contare.' }),
   );
-  $('statistiche-contenuto').replaceChildren(...contenuto);
+  $('pagina-statistiche').replaceChildren(...contenuto);
 }
 
 function disegnaTagScelto(tag) {
@@ -839,12 +846,6 @@ const MESI_IN_PIU = 12; // quanti mesi aggiunge "Mesi precedenti"
 
 let mesiIndietro = 12; // quanti mesi mostrare prima del corrente (almeno fino al primo ricordo)
 
-function apriCalendario() {
-  disegnaCalendario();
-  $('dlg-calendario').showModal();
-  $('dlg-calendario').scrollTop = $('dlg-calendario').scrollHeight; // il mese corrente è in fondo
-}
-
 function disegnaCalendario() {
   const adesso = new Date();
   const primo = posts.length ? posts[posts.length - 1].data : oggi(); // posts va dal più recente
@@ -857,7 +858,7 @@ function disegnaCalendario() {
   for (let i = mesiIndietro; i >= 0; i--) {
     mesi.push(disegnaMese(adesso.getFullYear(), adesso.getMonth() - i, conRicordi));
   }
-  $('calendario-mesi').replaceChildren(
+  $('pagina-calendario').replaceChildren(
     el('button', { type: 'button', className: 'btn-secondario', textContent: 'Mesi precedenti', onclick: altriMesi }),
     ...mesi,
   );
@@ -865,11 +866,11 @@ function disegnaCalendario() {
 
 // Aggiunge mesi in cima senza far saltare la vista.
 function altriMesi() {
-  const dlg = $('dlg-calendario');
-  const dalFondo = dlg.scrollHeight - dlg.scrollTop;
+  const pagina = document.documentElement;
+  const dalFondo = pagina.scrollHeight - window.scrollY;
   mesiIndietro += MESI_IN_PIU;
   disegnaCalendario();
-  dlg.scrollTop = dlg.scrollHeight - dalFondo;
+  window.scrollTo(0, pagina.scrollHeight - dalFondo);
 }
 
 // mese può uscire da 0-11 (per esempio -3): Date lo riporta nell'anno giusto.
@@ -903,7 +904,6 @@ function disegnaMese(anno, mese, conRicordi) {
 
 // Un giorno con ricordi o scelte: lo mostra nella timeline. Un giorno vuoto: apre un ricordo nuovo per quel giorno.
 function vaiAlGiorno(data) {
-  $('dlg-calendario').close();
   const delGiorno = posts.filter((p) => p.data === data);
   mostraPagina('diario');
   if (!delGiorno.length && !giornataPiena(giornataDel(data))) {
@@ -1248,10 +1248,8 @@ $('campo-importa').addEventListener('change', (e) => {
 $('btn-nuovo').onclick = () => apriModulo();
 $('btn-pagina-oggi').onclick = () => { giornoMostrato = null; mostraPagina('oggi'); };
 $('btn-pagina-diario').onclick = () => mostraPagina('diario');
-$('btn-calendario').onclick = apriCalendario;
-$('btn-statistiche').onclick = apriStatistiche;
-$('btn-chiudi-statistiche').onclick = () => $('dlg-statistiche').close();
-$('btn-chiudi-calendario').onclick = () => $('dlg-calendario').close();
+$('btn-pagina-calendario').onclick = () => mostraPagina('calendario');
+$('btn-pagina-statistiche').onclick = () => mostraPagina('statistiche');
 $('btn-annulla').onclick = chiudiModulo;
 $('dlg-post').addEventListener('cancel', (e) => { e.preventDefault(); chiudiModulo(); });
 

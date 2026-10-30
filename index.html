@@ -16,21 +16,21 @@
   <header class="testata">
     <div class="testata-riga">
       <h1>Diario</h1>
-      <div class="testata-azioni">
-        <button id="btn-calendario" class="btn-testo">Calendario</button>
-        <button id="btn-statistiche" class="btn-testo">Statistiche</button>
-        <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
-      </div>
+      <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
     </div>
     <div id="filtri" class="filtri"></div>
   </header>
 
   <main id="pagina-oggi" class="pagina-oggi"></main>
   <main id="timeline" class="timeline" hidden></main>
+  <main id="pagina-calendario" class="pagina-calendario" hidden></main>
+  <main id="pagina-statistiche" class="pagina-statistiche" hidden></main>
 
   <nav class="barra-pagine">
     <button id="btn-pagina-oggi">Oggi</button>
     <button id="btn-pagina-diario">Diario</button>
+    <button id="btn-pagina-calendario">Calendario</button>
+    <button id="btn-pagina-statistiche">Statistiche</button>
   </nav>
 
   <button id="btn-nuovo" class="fab" aria-label="Nuovo ricordo">+</button>
@@ -103,24 +103,6 @@
     <p id="cartella-stato"></p>
     <button type="button" id="btn-drive" class="btn-secondario" hidden>Collega Google Drive</button>
     <button type="button" id="btn-chiudi-backup" class="btn-testo">Chiudi</button>
-  </dialog>
-
-  <!-- Statistiche -->
-  <dialog id="dlg-statistiche" class="dlg-statistiche">
-    <div class="dlg-barra">
-      <h2>Statistiche</h2>
-      <button type="button" id="btn-chiudi-statistiche" class="btn-primario">Chiudi</button>
-    </div>
-    <div id="statistiche-contenuto" class="statistiche-contenuto"></div>
-  </dialog>
-
-  <!-- Calendario -->
-  <dialog id="dlg-calendario" class="dlg-calendario">
-    <div class="dlg-barra">
-      <h2>Calendario</h2>
-      <button type="button" id="btn-chiudi-calendario" class="btn-primario">Chiudi</button>
-    </div>
-    <div id="calendario-mesi" class="calendario-mesi"></div>
   </dialog>
 
   <!-- Foto prese dalla cartella photos/ -->
