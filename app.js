@@ -548,7 +548,13 @@ function nuovoGruppo() {
     alert(`Il gruppo ${nome} esiste già.`);
     return;
   }
-  salvaGruppi([...gruppiAttuali(), { nome, opzioni: [] }]);
+  // Le opzioni si possono scrivere subito, separate da virgole, o aggiungere dopo col +.
+  const opzioni = [];
+  for (const grezza of (prompt(`Opzioni per ${nome}, separate da virgole (facoltative)`) || '').split(',')) {
+    const opzione = maiuscolaIniziale(grezza.trim().replace(/\s+/g, ' '));
+    if (opzione && !opzioni.some((o) => stessoNome(o, opzione))) opzioni.push(opzione);
+  }
+  salvaGruppi([...gruppiAttuali(), { nome, opzioni }]);
 }
 
 // Togliere un gruppo o un'opzione non tocca i giorni già segnati.
