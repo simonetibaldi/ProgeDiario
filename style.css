@@ -39,6 +39,8 @@ body {
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 
+[hidden] { display: none !important; }
+
 /* Testata e filtri */
 
 .testata {
@@ -90,6 +92,54 @@ button { cursor: pointer; }
 .filtri::-webkit-scrollbar { display: none; }
 .filtri:empty { display: none; }
 
+/* Pagina Oggi */
+
+.pagina-oggi {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px calc(90px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.oggi-giorno { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.oggi-giorno h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: normal;
+  text-align: center;
+}
+.oggi-giorno h2::first-letter { text-transform: uppercase; }
+.oggi-giorno .btn-testo { padding: 4px 14px; font-size: 26px; line-height: 1; }
+.oggi-giorno .btn-testo:disabled { opacity: 0.3; }
+.gruppo-testa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: normal; color: var(--testo-tenue); text-transform: uppercase; letter-spacing: 0.04em; }
+.chip-aggiungi { min-width: 36px; }
+.oggi-azioni { display: flex; justify-content: space-between; gap: 12px; }
+
+/* Barra in basso: Oggi e Diario */
+
+.barra-pagine {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  border-top: 1px solid var(--bordo);
+  background: var(--sfondo);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.barra-pagine button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 14px 0;
+  color: var(--testo-tenue);
+}
+.barra-pagine button.attiva { color: var(--accento); font-weight: 600; }
+
 /* Chip (tag) */
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -112,7 +162,7 @@ button { cursor: pointer; }
 .timeline {
   max-width: 640px;
   margin: 0 auto;
-  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(170px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -151,7 +201,7 @@ button { cursor: pointer; }
 }
 .giorno-data::first-letter { text-transform: uppercase; }
 
-/* Le attività del giorno, sotto la data */
+/* Le scelte della pagina Oggi, sotto la data */
 .giorno-attivita {
   display: block;
   width: 100%;
@@ -163,21 +213,6 @@ button { cursor: pointer; }
   font-size: 14px;
   color: var(--testo-tenue);
 }
-
-/* Striscia "Oggi" in cima alla timeline */
-.oggi {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-  border: 1px dashed var(--accento);
-  border-radius: var(--raggio);
-  background: none;
-  padding: 12px 16px;
-  text-align: left;
-}
-.oggi-titolo { font-weight: 600; color: var(--accento); }
-.oggi-attivita { color: var(--testo-tenue); }
 
 /* Le foto stanno a sinistra, le scritte accanto */
 .post { display: flex; align-items: flex-start; border-top: 1px solid var(--bordo); }
@@ -227,7 +262,7 @@ button { cursor: pointer; }
 .fab {
   position: fixed;
   right: 20px;
-  bottom: calc(20px + env(safe-area-inset-bottom));
+  bottom: calc(76px + env(safe-area-inset-bottom));
   width: 60px;
   height: 60px;
   border: 0;
@@ -325,10 +360,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 }
 .campo textarea { resize: vertical; min-height: 120px; }
 
-/* Giornata: un'attività per riga, con le ore accanto se è scelta */
-.elenco-attivita { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.attivita-riga { display: flex; align-items: center; gap: 10px; }
-.campo .campo-ore { width: 10em; padding: 6px 10px; }
 
 .riga-data { display: flex; gap: 8px; }
 .riga-data input[type="time"] { width: auto; flex: none; }
