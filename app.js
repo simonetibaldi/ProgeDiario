@@ -277,18 +277,20 @@ function disegnaPost(post) {
 
   const corpo = el('div', { className: 'post-corpo' },
     el('div', { className: 'post-testa' },
-      el('span', { className: 'post-ora', textContent: [post.ora, post.umore].filter(Boolean).join(' · ') }),
+      el('span', { className: 'post-ora', textContent: post.ora }),
       el('button', { className: 'btn-testo', textContent: 'Modifica', onclick: () => apriModulo(post) }),
     ),
   );
   if (post.testo) corpo.append(el('p', { className: 'post-testo', textContent: post.testo }));
-  if (post.tags.length) {
+  // L'umore e i tag collegati alla pagina Oggi portano a quel giorno.
+  const collegati = new Set(post.umore ? [post.umore] : []);
+  for (const t of post.tags) if (opzioneDiOggi(t)) collegati.add(opzioneDiOggi(t).opzione);
+  if (post.tags.length || collegati.size) {
     corpo.append(el('div', { className: 'chips' },
       ...tagArgomento(post).map((t) => el('span', { className: 'chip', textContent: t })),
-      // Quelli collegati alla pagina Oggi portano a quel giorno.
-      ...post.tags.filter(opzioneDiOggi).map((t) => el('button', {
+      ...[...collegati].map((o) => el('button', {
         className: 'chip collegato',
-        textContent: opzioneDiOggi(t).opzione + ' ↗',
+        textContent: o + ' ↗',
         onclick: () => apriGiorno(post.data),
       }))));
   }
@@ -382,15 +384,21 @@ function aggiungiTag(grezzo) {
   disegnaTagModulo();
 }
 
-// Umori già pronti; quelli aggiunti a mano si ricavano dai post, come i tag.
+// Umori già pronti: all'inizio il gruppo Umore di Oggi ha questi. Quel gruppo e l'umore dei
+// ricordi sono la stessa cosa: un umore nuovo scritto in un ricordo entra nel gruppo.
 const UMORI_DI_BASE = ['Felice', 'Sereno', 'Entusiasta', 'Grato', 'Innamorato', 'Nostalgico', 'Stanco', 'Annoiato', 'Ansioso', 'Triste', 'Arrabbiato'];
 
-// Gli umori da proporre: prima quelli usati di più, poi quelli di base
-function tuttiGliUmori() {
+// Gli umori dei ricordi, dal più usato
+function umoriUsati() {
   const conteggio = new Map();
   for (const p of posts) if (p.umore) conteggio.set(p.umore, (conteggio.get(p.umore) || 0) + 1);
-  const usati = [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a));
-  return [...new Set([...usati, ...UMORI_DI_BASE])];
+  return [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a));
+}
+
+// Gli umori da proporre in un ricordo: prima quelli usati, poi le altre opzioni del gruppo
+function tuttiGliUmori() {
+  const gruppo = gruppiAttuali().find((g) => g.nome === GRUPPO_UMORE);
+  return [...new Set([...umoriUsati(), ...(gruppo ? gruppo.opzioni : [])])];
 }
 
 // Un umore solo per ricordo: toccarne un altro lo sostituisce, toccare quello scelto lo toglie.
@@ -435,6 +443,7 @@ async function salvaModulo() {
     creato: inModifica ? inModifica.creato : adesso,
     modificato: adesso,
   });
+  aggiungiAlGruppoUmore(formUmore);
   chiudiModulo();
   await ricarica();
 }
@@ -449,8 +458,9 @@ async function salvaModulo() {
 // che è pubblico. Per questo in GRUPPI_DI_BASE non vanno messe cose private.
 // ---------------------------------------------------------------------------
 
+const GRUPPO_UMORE = 'Umore';
 const GRUPPI_DI_BASE = [
-  { nome: 'Umore', opzioni: UMORI_DI_BASE },
+  { nome: GRUPPO_UMORE, opzioni: UMORI_DI_BASE },
   { nome: 'Dormito', opzioni: ['Bene', 'Male'] },
   { nome: 'Attività fisica', opzioni: ['Niente', 'Palestra', 'Calisthenics'] },
   { nome: 'Hobby', opzioni: ['Musical', 'Uncinetto', 'Tromba', 'Leggere'] },
@@ -502,19 +512,32 @@ function tagProposti() {
   return [...new Set([...tuttiITags(), ...gruppiAttuali().flatMap((g) => g.opzioni)])];
 }
 
-// Map(gruppo -> Map(opzione -> il ricordo che la segna)) per un giorno
+// Map(gruppo -> Map(opzione -> i ricordi che la segnano)) per un giorno:
+// li segnano l'umore del ricordo e i tag uguali a un'opzione.
 function scelteDaRicordi(data) {
   const scelte = new Map();
+  const segna = (gruppo, opzione, post) => {
+    if (!scelte.has(gruppo)) scelte.set(gruppo, new Map());
+    const opzioni = scelte.get(gruppo);
+    if (!opzioni.has(opzione)) opzioni.set(opzione, []);
+    if (!opzioni.get(opzione).includes(post)) opzioni.get(opzione).push(post);
+  };
   for (const post of posts) {
     if (post.data !== data) continue;
+    if (post.umore) segna(GRUPPO_UMORE, post.umore, post);
     for (const tag of post.tags) {
       const collegata = opzioneDiOggi(tag);
-      if (!collegata) continue;
-      if (!scelte.has(collegata.gruppo)) scelte.set(collegata.gruppo, new Map());
-      scelte.get(collegata.gruppo).set(collegata.opzione, post);
+      if (collegata) segna(collegata.gruppo, collegata.opzione, post);
     }
   }
   return scelte;
+}
+
+// Un umore scritto in un ricordo diventa un'opzione del gruppo (se il gruppo c'è ancora).
+function aggiungiAlGruppoUmore(umore) {
+  const gruppo = gruppiAttuali().find((g) => g.nome === GRUPPO_UMORE);
+  if (!umore || !gruppo || gruppo.opzioni.some((o) => stessoNome(o, umore))) return;
+  salvaGruppi(gruppiAttuali().map((g) => (g === gruppo ? { ...g, opzioni: [...g.opzioni, umore] } : g)));
 }
 
 // Tutto ciò che è segnato in un giorno, a mano o dai ricordi: { gruppo: [opzioni] }
@@ -617,6 +640,12 @@ function togliGruppo(nomeGruppo) {
   salvaGruppi(gruppiAttuali().filter((g) => g.nome !== nomeGruppo));
 }
 
+// Un'opzione segnata da un ricordo si cambia da lì: se i ricordi sono più d'uno, si va al giorno.
+function apriRicordiCollegati(data, ricordi) {
+  if (ricordi.length === 1) apriModulo(ricordi[0]);
+  else vaiAlGiorno(data);
+}
+
 function apriOChiudiGruppo(nome) {
   if (gruppiAperti.has(nome)) gruppiAperti.delete(nome);
   else gruppiAperti.add(nome);
@@ -628,9 +657,11 @@ function disegnaGruppo(data, gruppo, scelte, posizione) {
   const scelteQui = [...new Set([...collegate.keys(), ...(scelte[gruppo.nome] || [])])];
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome);
   // Da chiuso si vede una riga sola: le opzioni scelte stanno davanti, così restano visibili.
+  // Nel gruppo Umore ci sono anche gli umori usati nei ricordi prima che fossero opzioni.
+  const proprie = gruppo.nome === GRUPPO_UMORE ? [...gruppo.opzioni, ...umoriUsati()] : gruppo.opzioni;
   const opzioni = aperto
-    ? [...new Set([...gruppo.opzioni, ...scelteQui])]
-    : [...new Set([...scelteQui, ...gruppo.opzioni])];
+    ? [...new Set([...proprie, ...scelteQui])]
+    : [...new Set([...scelteQui, ...proprie])];
   const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudiGruppo(gruppo.nome) });
   const testa = el('div', { className: 'gruppo-testa' }, el('h3', { textContent: gruppo.nome }));
   if (modificaGruppi) {
@@ -652,7 +683,7 @@ function disegnaGruppo(data, gruppo, scelte, posizione) {
         textContent: modificaGruppi ? o + ' ×' : (collegate.has(o) ? o + ' ↗' : o),
         onclick: () => {
           if (modificaGruppi) togliOpzione(gruppo.nome, o);
-          else if (collegate.has(o)) apriModulo(collegate.get(o)); // si toglie dal ricordo che la segna
+          else if (collegate.has(o)) apriRicordiCollegati(data, collegate.get(o));
           else cambiaScelta(data, gruppo.nome, o);
         },
       })),
@@ -666,7 +697,8 @@ function disegnaOggi() {
   const scelte = giornata ? giornata.scelte : {};
   // Anche i gruppi tolti dall'elenco si vedono, nei giorni in cui erano stati scelti.
   const gruppi = [...gruppiAttuali()];
-  for (const nome of Object.keys(scelte)) if (!gruppi.some((g) => g.nome === nome)) gruppi.push({ nome, opzioni: [] });
+  const nomiSegnati = [...Object.keys(scelte), ...scelteDaRicordi(data).keys()];
+  for (const nome of nomiSegnati) if (!gruppi.some((g) => g.nome === nome)) gruppi.push({ nome, opzioni: [] });
 
   const spostati = (giorni) => {
     const d = new Date(data + 'T00:00');
