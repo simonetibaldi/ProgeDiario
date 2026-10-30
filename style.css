@@ -192,6 +192,8 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 .chip.attivo { background: var(--accento); color: var(--accento-testo); }
+/* Scelta che viene da un ricordo: nei ricordi e nella pagina Oggi */
+.chip.collegato { border-color: var(--bordo); font-style: italic; }
 .suggeriti .chip { background: transparent; border-color: var(--bordo); color: var(--testo-tenue); }
 
 /* Timeline */

@@ -189,7 +189,7 @@ let urlAnteprime = [];
 // Map(tag -> in quanti ricordi compare)
 function contaTag(elenco) {
   const conteggio = new Map();
-  for (const p of elenco) for (const t of p.tags) conteggio.set(t, (conteggio.get(t) || 0) + 1);
+  for (const p of elenco) for (const t of tagArgomento(p)) conteggio.set(t, (conteggio.get(t) || 0) + 1);
   return conteggio;
 }
 
@@ -248,14 +248,13 @@ function disegnaTimeline() {
     contenuto.push(el('p', { className: 'vuoto', textContent: 'Ancora nessun ricordo. Tocca + per scrivere il primo.' }));
   }
   for (const data of date) {
-    const giornata = giornataDel(data);
     contenuto.push(el('section', { className: 'giorno', id: 'giorno-' + data },
       el('div', { className: 'giorno-testa' },
         el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
         el('button', { className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, data) }),
       ),
-      giornataPiena(giornata)
-        ? el('button', { className: 'giorno-attivita', textContent: testoScelte(giornata), onclick: () => apriGiorno(data) })
+      Object.keys(scelteDelGiorno(data)).length
+        ? el('button', { className: 'giorno-attivita', textContent: testoScelte(scelteDelGiorno(data)), onclick: () => apriGiorno(data) })
         : '',
       ...giorni.get(data).map(disegnaPost),
     ));
@@ -285,7 +284,13 @@ function disegnaPost(post) {
   if (post.testo) corpo.append(el('p', { className: 'post-testo', textContent: post.testo }));
   if (post.tags.length) {
     corpo.append(el('div', { className: 'chips' },
-      ...post.tags.map((t) => el('span', { className: 'chip', textContent: t }))));
+      ...tagArgomento(post).map((t) => el('span', { className: 'chip', textContent: t })),
+      // Quelli collegati alla pagina Oggi portano a quel giorno.
+      ...post.tags.filter(opzioneDiOggi).map((t) => el('button', {
+        className: 'chip collegato',
+        textContent: opzioneDiOggi(t).opzione + ' ↗',
+        onclick: () => apriGiorno(post.data),
+      }))));
   }
   articolo.append(corpo);
   return articolo;
@@ -355,7 +360,9 @@ function disegnaTagModulo() {
   })));
 
   const bozza = $('campo-tag').value.trim().toLowerCase();
-  const suggeriti = tuttiITags().filter((t) => !formTags.includes(t) && t.toLowerCase().includes(bozza));
+  // Le opzioni della pagina Oggi si propongono solo quando si comincia a scrivere: sono tante.
+  const proposti = bozza ? tagProposti() : tuttiITags();
+  const suggeriti = proposti.filter((t) => !formTags.includes(t) && t.toLowerCase().includes(bozza));
   $('tag-suggeriti').replaceChildren(...suggeriti.map((t) => el('button', {
     type: 'button',
     className: 'chip',
@@ -369,7 +376,7 @@ function aggiungiTag(grezzo) {
   const nome = maiuscolaIniziale(grezzo.trim().replace(/\s+/g, ' '));
   if (nome) {
     const uguale = (t) => t.toLowerCase() === nome.toLowerCase();
-    if (!formTags.some(uguale)) formTags.push(tuttiITags().find(uguale) || nome);
+    if (!formTags.some(uguale)) formTags.push(tagProposti().find(uguale) || nome);
   }
   $('campo-tag').value = '';
   disegnaTagModulo();
@@ -476,8 +483,52 @@ function scelteDi(giornata) {
   return scelte;
 }
 
-function testoScelte(giornata) {
-  return Object.entries(giornata.scelte).map(([gruppo, opzioni]) => `${gruppo}: ${opzioni.join(', ')}`).join(' · ');
+// Un tag di un ricordo uguale a un'opzione di Oggi non è un argomento: segna quell'opzione
+// per il giorno del ricordo. Il legame si calcola ogni volta e non è salvato: nel post resta
+// il tag, così togliendolo (o eliminando il ricordo, o togliendo l'opzione) tutto torna da sé.
+// Restituisce { gruppo, opzione }, oppure undefined se il tag è un argomento normale.
+function opzioneDiOggi(tag) {
+  for (const gruppo of gruppiAttuali()) {
+    const opzione = gruppo.opzioni.find((o) => stessoNome(o, tag));
+    if (opzione) return { gruppo: gruppo.nome, opzione };
+  }
+  return undefined;
+}
+
+const tagArgomento = (post) => post.tags.filter((t) => !opzioneDiOggi(t));
+
+// I tag da proporre nel modulo: gli argomenti già usati e tutte le opzioni di Oggi
+function tagProposti() {
+  return [...new Set([...tuttiITags(), ...gruppiAttuali().flatMap((g) => g.opzioni)])];
+}
+
+// Map(gruppo -> Map(opzione -> il ricordo che la segna)) per un giorno
+function scelteDaRicordi(data) {
+  const scelte = new Map();
+  for (const post of posts) {
+    if (post.data !== data) continue;
+    for (const tag of post.tags) {
+      const collegata = opzioneDiOggi(tag);
+      if (!collegata) continue;
+      if (!scelte.has(collegata.gruppo)) scelte.set(collegata.gruppo, new Map());
+      scelte.get(collegata.gruppo).set(collegata.opzione, post);
+    }
+  }
+  return scelte;
+}
+
+// Tutto ciò che è segnato in un giorno, a mano o dai ricordi: { gruppo: [opzioni] }
+function scelteDelGiorno(data) {
+  const giornata = giornataDel(data);
+  const scelte = { ...(giornata ? giornata.scelte : {}) };
+  for (const [gruppo, opzioni] of scelteDaRicordi(data)) {
+    scelte[gruppo] = [...new Set([...(scelte[gruppo] || []), ...opzioni.keys()])];
+  }
+  return scelte;
+}
+
+function testoScelte(scelte) {
+  return Object.entries(scelte).map(([gruppo, opzioni]) => `${gruppo}: ${opzioni.join(', ')}`).join(' · ');
 }
 
 // Salva subito in memoria e nell'archivio; verso il deposito parte poco dopo l'ultimo tocco.
@@ -573,7 +624,8 @@ function apriOChiudiGruppo(nome) {
 }
 
 function disegnaGruppo(data, gruppo, scelte, posizione) {
-  const scelteQui = scelte[gruppo.nome] || [];
+  const collegate = scelteDaRicordi(data).get(gruppo.nome) || new Map();
+  const scelteQui = [...new Set([...collegate.keys(), ...(scelte[gruppo.nome] || [])])];
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome);
   // Da chiuso si vede una riga sola: le opzioni scelte stanno davanti, così restano visibili.
   const opzioni = aperto
@@ -596,9 +648,13 @@ function disegnaGruppo(data, gruppo, scelte, posizione) {
     el('div', { className: 'chips' },
       ...opzioni.map((o) => el('button', {
         type: 'button',
-        className: 'chip' + (scelteQui.includes(o) ? ' attivo' : ''),
-        textContent: modificaGruppi ? o + ' ×' : o,
-        onclick: () => (modificaGruppi ? togliOpzione(gruppo.nome, o) : cambiaScelta(data, gruppo.nome, o)),
+        className: 'chip' + (scelteQui.includes(o) ? ' attivo' : '') + (collegate.has(o) ? ' collegato' : ''),
+        textContent: modificaGruppi ? o + ' ×' : (collegate.has(o) ? o + ' ↗' : o),
+        onclick: () => {
+          if (modificaGruppi) togliOpzione(gruppo.nome, o);
+          else if (collegate.has(o)) apriModulo(collegate.get(o)); // si toglie dal ricordo che la segna
+          else cambiaScelta(data, gruppo.nome, o);
+        },
       })),
       modificaGruppi ? '' : el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: '+', ariaLabel: 'Nuova opzione', onclick: () => aggiungiOpzione(data, gruppo.nome) }),
     ));
