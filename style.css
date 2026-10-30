@@ -9,6 +9,12 @@
   --chip: #efe6da;
   --pericolo: #b3261e;
   --raggio: 14px;
+  --gruppo-1: #b5562f;
+  --gruppo-2: #2f6f8f;
+  --gruppo-3: #4f7a3a;
+  --gruppo-4: #7a4f9a;
+  --gruppo-5: #94681f;
+  --gruppo-6: #a23e63;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,6 +28,12 @@
     --accento-testo: #1b1816;
     --chip: #342e29;
     --pericolo: #f2867f;
+    --gruppo-1: #e08a5f;
+    --gruppo-2: #7cb8d8;
+    --gruppo-3: #9cc884;
+    --gruppo-4: #bd9be0;
+    --gruppo-5: #dbb062;
+    --gruppo-6: #e58fb0;
   }
 }
 
@@ -100,7 +112,7 @@ button { cursor: pointer; }
   padding: 12px 16px calc(90px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 .oggi-giorno { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .oggi-giorno h2 {
@@ -113,8 +125,27 @@ button { cursor: pointer; }
 .oggi-giorno h2::first-letter { text-transform: uppercase; }
 .oggi-giorno .btn-testo { padding: 4px 14px; font-size: 26px; line-height: 1; }
 .oggi-giorno .btn-testo:disabled { opacity: 0.3; }
-.gruppo-testa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: normal; color: var(--testo-tenue); text-transform: uppercase; letter-spacing: 0.04em; }
+/* Ogni gruppo è un riquadro col suo colore */
+.colore-0 { --colore: var(--gruppo-1); }
+.colore-1 { --colore: var(--gruppo-2); }
+.colore-2 { --colore: var(--gruppo-3); }
+.colore-3 { --colore: var(--gruppo-4); }
+.colore-4 { --colore: var(--gruppo-5); }
+.colore-5 { --colore: var(--gruppo-6); }
+.gruppo {
+  border: 1px solid var(--bordo);
+  border-left: 4px solid var(--colore);
+  border-radius: var(--raggio);
+  background: var(--carta);
+  background: color-mix(in srgb, var(--colore) 7%, var(--carta));
+  padding: 10px 12px 12px;
+}
+.gruppo .chip.attivo { background: var(--colore); }
+/* Da chiuso si vede una riga sola di opzioni */
+.gruppo.chiuso .chips { max-height: 34px; overflow: hidden; }
+.gruppo-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin-bottom: 6px; }
+.gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--colore); text-transform: uppercase; letter-spacing: 0.04em; }
+.gruppo-freccia { padding: 0 6px; color: var(--colore); }
 .chip-aggiungi { min-width: 36px; }
 .oggi-azioni { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .btn-modifica-gruppi {

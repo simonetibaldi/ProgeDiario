@@ -454,6 +454,8 @@ const PAUSA_PRIMA_DI_SINCRONIZZARE = 2000;
 
 let giornoMostrato = null; // la data mostrata nella pagina Oggi; null vuol dire oggi
 let modificaGruppi = false; // true mentre si tolgono gruppi e opzioni
+const gruppiAperti = new Set(); // i gruppi che mostrano tutte le opzioni invece di una riga sola
+const COLORI_GRUPPI = 6; // quanti colori ci sono in style.css (.colore-0, .colore-1...)
 let codaSalvataggi = Promise.resolve(); // i tocchi si salvano uno alla volta, nell'ordine
 let attesaSincronizzazione = null;
 
@@ -559,14 +561,33 @@ function togliGruppo(nomeGruppo) {
   salvaGruppi(gruppiAttuali().filter((g) => g.nome !== nomeGruppo));
 }
 
-function disegnaGruppo(data, gruppo, scelte) {
+function apriOChiudiGruppo(nome) {
+  if (gruppiAperti.has(nome)) gruppiAperti.delete(nome);
+  else gruppiAperti.add(nome);
+  disegnaOggi();
+}
+
+function disegnaGruppo(data, gruppo, scelte, posizione) {
   const scelteQui = scelte[gruppo.nome] || [];
-  const opzioni = [...new Set([...gruppo.opzioni, ...scelteQui])];
+  const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome);
+  // Da chiuso si vede una riga sola: le opzioni scelte stanno davanti, così restano visibili.
+  const opzioni = aperto
+    ? [...new Set([...gruppo.opzioni, ...scelteQui])]
+    : [...new Set([...scelteQui, ...gruppo.opzioni])];
+  const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudiGruppo(gruppo.nome) });
   const testa = el('div', { className: 'gruppo-testa' }, el('h3', { textContent: gruppo.nome }));
   if (modificaGruppi) {
     testa.append(el('button', { type: 'button', className: 'btn-testo', textContent: 'Togli gruppo', onclick: () => togliGruppo(gruppo.nome) }));
+  } else {
+    testa.append(freccia);
   }
-  return el('section', { className: 'gruppo' }, testa,
+  return el('section', {
+    className: `gruppo colore-${posizione % COLORI_GRUPPI}${aperto ? '' : ' chiuso'}`,
+    // Toccare il riquadro fuori dai pulsanti fa lo stesso della freccia.
+    onclick: (e) => {
+      if (!modificaGruppi && !freccia.hidden && !e.target.closest('button')) apriOChiudiGruppo(gruppo.nome);
+    },
+  }, testa,
     el('div', { className: 'chips' },
       ...opzioni.map((o) => el('button', {
         type: 'button',
@@ -600,7 +621,7 @@ function disegnaOggi() {
       el('h2', { textContent: data === oggi() ? 'Oggi' : dataLeggibile(data) }),
       el('button', { type: 'button', className: 'btn-testo', textContent: '›', ariaLabel: 'Giorno dopo', disabled: data >= oggi(), onclick: () => spostati(1) }),
     ),
-    ...gruppi.map((g) => disegnaGruppo(data, g, scelte)),
+    ...gruppi.map((g, i) => disegnaGruppo(data, g, scelte, i)),
     el('div', { className: 'oggi-azioni' },
       modificaGruppi ? el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuovo gruppo', onclick: nuovoGruppo }) : '',
       el('button', {
@@ -611,6 +632,12 @@ function disegnaOggi() {
       }),
     ),
   );
+
+  // La freccia serve solo se le opzioni non stanno in una riga: lo si sa dopo averle disegnate.
+  for (const gruppo of $('pagina-oggi').querySelectorAll('.gruppo.chiuso')) {
+    const chips = gruppo.querySelector('.chips');
+    gruppo.querySelector('.gruppo-freccia').hidden = chips.scrollHeight <= chips.clientHeight + 1;
+  }
 }
 
 // Le due pagine: Oggi e Diario. La timeline si ridisegna solo quando serve, perché ha le foto.
