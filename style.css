@@ -116,7 +116,15 @@ button { cursor: pointer; }
 .gruppo-testa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: normal; color: var(--testo-tenue); text-transform: uppercase; letter-spacing: 0.04em; }
 .chip-aggiungi { min-width: 36px; }
-.oggi-azioni { display: flex; justify-content: space-between; gap: 12px; }
+.oggi-azioni { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.btn-modifica-gruppi {
+  margin-left: auto;
+  border-radius: 14px;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: pre-line; /* Modifica sopra, Gruppi sotto */
+}
 
 /* Barra in basso: Oggi e Diario */
 
