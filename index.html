@@ -23,12 +23,14 @@
 
   <main id="pagina-oggi" class="pagina-oggi"></main>
   <main id="timeline" class="timeline" hidden></main>
+  <main id="pagina-archivio" class="pagina-archivio" hidden></main>
   <main id="pagina-calendario" class="pagina-calendario" hidden></main>
   <main id="pagina-statistiche" class="pagina-statistiche" hidden></main>
 
   <nav class="barra-pagine">
     <button id="btn-pagina-oggi">Oggi</button>
     <button id="btn-pagina-diario">Diario</button>
+    <button id="btn-pagina-archivio">Archivio</button>
     <button id="btn-pagina-calendario">Calendario</button>
     <button id="btn-pagina-statistiche">Statistiche</button>
   </nav>
@@ -50,6 +52,12 @@
           <input type="date" id="campo-data" aria-label="Data" required>
           <input type="time" id="campo-ora" aria-label="Ora">
         </div>
+      </div>
+
+      <div class="campo">
+        <span>Archivio</span>
+        <select id="campo-raccolta" aria-label="Raccolta dell'archivio"></select>
+        <div id="campi-raccolta" class="campi-raccolta"></div>
       </div>
 
       <label class="campo">

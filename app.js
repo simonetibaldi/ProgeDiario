@@ -6,15 +6,16 @@
 // Un post ha questa forma:
 //   { id, data: 'AAAA-MM-GG', ora: 'HH:MM', testo, tags: ['Viaggi', ...], umore: 'Felice',
 //     foto: [File, ...], creato: timestamp, modificato: timestamp }
-// L'ora e l'umore sono '' se non sono indicati.
+// L'ora e l'umore sono '' se non sono indicati. Un ricordo dell'archivio (vedi "Archivio")
+// ha in più raccolta: 'Libri' e campi: { Titolo: '...', Giudizio: 8 }; gli altri non li hanno.
 //
 // Nello stesso archivio stanno altri due tipi di record (vedi "Oggi"), che
 // viaggiano come i ricordi:
-//   { id: 'giornata-AAAA-MM-GG', tipo: 'giornata', data,
+//   { id: 'giornata-AAAA-MM-GG', tipo: 'giornata', data, stella: true,
 //     scelte: { Hobby: ['Musical'], 'Come sto': { Energia: 6 }, Sigarette: { Sigarette: 3 } },
 //     foto: [], creato, modificato }
 //   { id: 'impostazioni-gruppi', tipo: 'gruppi', gruppi: [{ nome, tipo, opzioni: [...], estremi }],
-//     offerti: [...], foto: [], creato, modificato }
+//     offerti: [...], collegamenti: { Outfit: { gruppo, voce } }, foto: [], creato, modificato }
 // Il nome di ogni File è quello che la foto ha nella cartella photos/.
 //
 // Nell'archivio le foto non sono File ma { nome, dati: ArrayBuffer }: Safari
@@ -28,7 +29,7 @@
 // ---------------------------------------------------------------------------
 
 const DB_NOME = 'diario';
-const DB_VERSIONE = 7;
+const DB_VERSIONE = 8;
 const STORE = 'posts';
 
 const dbPronto = new Promise((resolve, reject) => {
@@ -182,6 +183,8 @@ let inModifica = null; // post in modifica, oppure null se è nuovo
 let formFoto = [];
 let formTags = [];
 let formUmore = '';
+let formRaccolta = '';
+let formCampi = {};
 
 // URL temporanei delle immagini mostrate, da liberare a ogni ridisegno
 let urlTimeline = [];
@@ -251,7 +254,7 @@ function disegnaTimeline() {
   for (const data of date) {
     contenuto.push(el('section', { className: 'giorno', id: 'giorno-' + data },
       el('div', { className: 'giorno-testa' },
-        el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) }),
+        el('h2', { className: 'giorno-data', textContent: dataLeggibile(data) + (giornataBella(data) ? ' ★' : '') }),
         el('button', { className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, data) }),
       ),
       Object.keys(scelteDelGiorno(data)).length
@@ -282,6 +285,12 @@ function disegnaPost(post) {
       el('button', { className: 'btn-testo', textContent: 'Modifica', onclick: () => apriModulo(post) }),
     ),
   );
+  // Un ricordo dell'archivio dice in che raccolta sta, e porta lì.
+  if (post.raccolta) {
+    corpo.append(el('p', { className: 'post-raccolta' },
+      el('button', { className: 'btn-testo', textContent: post.raccolta + ' ›', onclick: () => apriRaccolta(post.raccolta) }),
+      ' ' + descrizioneCampi(post)));
+  }
   if (post.testo) corpo.append(el('p', { className: 'post-testo', textContent: post.testo }));
   // L'umore e i tag collegati alla pagina Oggi portano a quel giorno.
   const collegati = new Set(post.umore ? [post.umore] : []);
@@ -308,12 +317,14 @@ function apriFoto(url) {
 // Modulo nuovo / modifica
 // ---------------------------------------------------------------------------
 
-// Senza post è un ricordo nuovo, per oggi o per il giorno indicato.
-function apriModulo(post = null, giorno = oggi()) {
+// Senza post è un ricordo nuovo, per oggi o per il giorno indicato, e nella raccolta indicata.
+function apriModulo(post = null, giorno = oggi(), raccolta = '') {
   inModifica = post;
   formFoto = post ? [...post.foto] : [];
   formTags = post ? [...post.tags] : [];
   formUmore = post ? post.umore : '';
+  formRaccolta = post ? post.raccolta || '' : raccolta;
+  formCampi = post ? { ...post.campi } : {};
 
   $('dlg-titolo').textContent = post ? 'Modifica ricordo' : 'Nuovo ricordo';
   $('campo-data').value = post ? post.data : giorno;
@@ -325,9 +336,52 @@ function apriModulo(post = null, giorno = oggi()) {
   $('btn-cartella').hidden = !cartella;
 
   disegnaAnteprime();
+  disegnaRaccoltaModulo();
   disegnaTagModulo();
   disegnaUmoreModulo();
   $('dlg-post').showModal();
+}
+
+// La raccolta dell'archivio e i suoi campi; "Solo diario" vuol dire nessuna.
+function disegnaRaccoltaModulo() {
+  $('campo-raccolta').replaceChildren(
+    el('option', { value: '', textContent: 'Solo diario' }),
+    ...RACCOLTE.map((r) => el('option', { value: r.nome, textContent: r.nome })),
+  );
+  $('campo-raccolta').value = formRaccolta;
+  const raccolta = raccoltaChiamata(formRaccolta);
+  $('campi-raccolta').replaceChildren(...(raccolta ? raccolta.campi : []).map((campo) => {
+    if (campo.tipo === 'voto') {
+      return el('label', {}, campo.nome,
+        el('div', { className: 'scala-numeri' }, ...SCALA.map((n) => el('button', {
+          type: 'button',
+          className: 'scala-numero' + (formCampi[campo.nome] === n ? ' attivo' : ''),
+          textContent: n,
+          onclick: () => {
+            formCampi[campo.nome] = formCampi[campo.nome] === n ? undefined : n;
+            disegnaRaccoltaModulo();
+          },
+        }))));
+    }
+    return el('label', {}, campo.nome, el('input', {
+      type: campo.tipo === 'data' ? 'date' : 'text',
+      value: formCampi[campo.nome] || '',
+      autocapitalize: 'sentences',
+      oninput: (e) => { formCampi[campo.nome] = e.target.value; },
+      onkeydown: (e) => { if (e.key === 'Enter') e.preventDefault(); }, // Invio qui non salva il ricordo
+    }));
+  }));
+}
+
+// I campi compilati della raccolta scelta; quelli di un'altra raccolta si lasciano.
+function campiCompilati() {
+  const raccolta = raccoltaChiamata(formRaccolta);
+  const campi = {};
+  for (const { nome } of raccolta ? raccolta.campi : []) {
+    const valore = typeof formCampi[nome] === 'string' ? formCampi[nome].trim() : formCampi[nome];
+    if (valore) campi[nome] = valore;
+  }
+  return campi;
 }
 
 function chiudiModulo() {
@@ -426,7 +480,8 @@ async function salvaModulo() {
   if ($('campo-umore').value.trim()) scegliUmore($('campo-umore').value); // lo stesso per l'umore
 
   const testo = $('campo-testo').value.trim();
-  if (!testo && !formFoto.length) {
+  const campi = campiCompilati();
+  if (!testo && !formFoto.length && !Object.keys(campi).length) {
     alert('Scrivi qualcosa o aggiungi almeno una foto.');
     return;
   }
@@ -440,6 +495,7 @@ async function salvaModulo() {
     testo,
     tags: formTags,
     umore: formUmore,
+    ...(formRaccolta ? { raccolta: formRaccolta, campi } : {}),
     foto: conNome(formFoto, data),
     creato: inModifica ? inModifica.creato : adesso,
     modificato: adesso,
@@ -505,7 +561,8 @@ let attesaSincronizzazione = null;
 const giornataDel = (data) => giornate.find((g) => g.data === data);
 const recordDellaGiornata = () => [...giornate, ...(impostazioniGruppi ? [impostazioniGruppi] : [])];
 const stessoNome = (a, b) => a.toLowerCase() === b.toLowerCase();
-const giornataPiena = (giornata) => !!giornata && Object.keys(giornata.scelte).length > 0;
+const giornataPiena = (giornata) => !!giornata && (Object.keys(giornata.scelte).length > 0 || !!giornata.stella);
+const giornataBella = (data) => !!(giornataDel(data) || {}).stella;
 const numeroLeggibile = (n) => String(n).replace('.', ',');
 
 function gruppiAttuali() {
@@ -590,12 +647,33 @@ function aggiungiAlGruppoUmore(umore) {
   salvaGruppi(gruppiAttuali().map((g) => (g === gruppo ? { ...g, opzioni: [...g.opzioni, umore] } : g)));
 }
 
+// Il voto di una raccolta dell'archivio (per esempio Outfit) può segnare una scala di Oggi:
+// si sceglie dall'archivio e sta in impostazioniGruppi.collegamenti. Il verso è uno solo:
+// segnare la scala a mano non crea niente nell'archivio.
+// Restituisce Map(voce -> il ricordo che la segna) per quel gruppo in quel giorno.
+function valoriDaArchivio(data, nomeGruppo) {
+  const collegamenti = (impostazioniGruppi && impostazioniGruppi.collegamenti) || {};
+  const segnate = new Map();
+  for (const post of posts) {
+    const collegata = post.data === data && post.raccolta && collegamenti[post.raccolta];
+    const voto = collegata && votoDi(post);
+    if (voto && collegata.gruppo === nomeGruppo && !segnate.has(collegata.voce)) segnate.set(collegata.voce, post);
+  }
+  return segnate;
+}
+
 // Tutto ciò che è segnato in un giorno, a mano o dai ricordi: { gruppo: [opzioni] o { opzione: numero } }
 function scelteDelGiorno(data) {
   const giornata = giornataDel(data);
   const scelte = { ...(giornata ? giornata.scelte : {}) };
   for (const [gruppo, opzioni] of scelteDaRicordi(data)) {
     scelte[gruppo] = [...new Set([...(scelte[gruppo] || []), ...opzioni.keys()])];
+  }
+  for (const { gruppo } of Object.values((impostazioniGruppi && impostazioniGruppi.collegamenti) || {})) {
+    const daArchivio = valoriDaArchivio(data, gruppo);
+    if (!daArchivio.size) continue;
+    scelte[gruppo] = { ...valoriDi(gruppoChiamato(gruppo, scelte[gruppo]), scelte[gruppo]) };
+    for (const [voce, post] of daArchivio) scelte[gruppo][voce] = votoDi(post);
   }
   return scelte;
 }
@@ -618,19 +696,26 @@ function registra(record) {
   attesaSincronizzazione = setTimeout(() => { codaCopia = codaCopia.then(sincronizza); }, PAUSA_PRIMA_DI_SINCRONIZZARE);
 }
 
-function salvaGruppi(gruppi) {
+// cambi: { gruppi } o { collegamenti }; il resto delle impostazioni resta com'è.
+function salvaImpostazioni(cambi) {
   const adesso = Date.now();
   impostazioniGruppi = {
+    ...impostazioniGruppi,
     id: ID_GRUPPI,
     tipo: 'gruppi',
-    gruppi,
+    gruppi: gruppiAttuali(),
     offerti: GRUPPI_AGGIUNTI_DOPO,
     foto: [],
     creato: impostazioniGruppi ? impostazioniGruppi.creato : adesso,
+    ...cambi,
     modificato: adesso,
   };
   registra(impostazioniGruppi);
-  disegnaOggi();
+  disegnaPagina();
+}
+
+function salvaGruppi(gruppi) {
+  salvaImpostazioni({ gruppi });
 }
 
 // Cambia il gruppo con quel nome (che deve essere nell'elenco).
@@ -638,19 +723,27 @@ function cambiaGruppo(nome, modifica) {
   salvaGruppi(gruppiAttuali().map((g) => (g.nome === nome ? modifica(g) : g)));
 }
 
-// Scrive quello che è segnato per un gruppo in un giorno; se è vuoto lo toglie.
-function scriviGiornata(data, nomeGruppo, segnato) {
-  const vecchia = giornataDel(data);
+// cambi: { scelte } o { stella }. Una giornata svuotata si salva lo stesso, così lo
+// svuotamento arriva agli altri dispositivi.
+function salvaGiornata(data, cambi) {
   const adesso = Date.now();
-  const scelte = { ...(vecchia ? vecchia.scelte : {}) };
-  if (Object.keys(segnato).length) scelte[nomeGruppo] = segnato;
-  else delete scelte[nomeGruppo];
-
-  // Una giornata svuotata si salva lo stesso, così lo svuotamento arriva agli altri dispositivi.
-  const nuova = { ...(vecchia || { id: 'giornata-' + data, tipo: 'giornata', data, foto: [], creato: adesso }), scelte, modificato: adesso };
+  const nuova = {
+    ...(giornataDel(data) || { id: 'giornata-' + data, tipo: 'giornata', data, scelte: {}, foto: [], creato: adesso }),
+    ...cambi,
+    modificato: adesso,
+  };
   giornate = [...giornate.filter((g) => g.data !== data), nuova];
   registra(nuova);
   disegnaOggi();
+}
+
+// Scrive quello che è segnato per un gruppo in un giorno; se è vuoto lo toglie.
+function scriviGiornata(data, nomeGruppo, segnato) {
+  const giornata = giornataDel(data);
+  const scelte = { ...(giornata ? giornata.scelte : {}) };
+  if (Object.keys(segnato).length) scelte[nomeGruppo] = segnato;
+  else delete scelte[nomeGruppo];
+  salvaGiornata(data, { scelte });
 }
 
 function cambiaScelta(data, gruppo, opzione) {
@@ -841,29 +934,33 @@ function disegnaVociInModifica(gruppo) {
 
 function disegnaScale(data, gruppo, scelte, aperto) {
   if (modificaGruppi) return disegnaVociInModifica(gruppo);
-  const valori = valoriDi(gruppo, scelte[gruppo.nome]);
+  // Un voto dell'archivio vale più di quello segnato a mano, e si cambia da lì.
+  const daArchivio = valoriDaArchivio(data, gruppo.nome);
+  const valori = { ...valoriDi(gruppo, scelte[gruppo.nome]) };
+  for (const [voce, post] of daArchivio) valori[voce] = votoDi(post);
   const voci = [...new Set([...gruppo.opzioni, ...Object.keys(valori)])];
   // Da chiuso: una riga con i valori segnati davanti, poi le scale ancora vuote.
   if (!aperto) {
     return el('div', { className: 'chips' },
       ...[...voci.filter((v) => v in valori), ...voci.filter((v) => !(v in valori))].map((v) => el('span', {
-        className: 'chip' + (v in valori ? ' attivo' : ''),
-        textContent: v in valori ? `${v} ${valori[v]}` : v,
+        className: 'chip' + (v in valori ? ' attivo' : '') + (daArchivio.has(v) ? ' collegato' : ''),
+        textContent: v in valori ? `${v} ${valori[v]}${daArchivio.has(v) ? ' ↗' : ''}` : v,
       })));
   }
   const vuote = voci.filter((v) => !(v in valori));
   return el('div', { className: 'voci' },
     ...voci.map((v) => {
       const [basso, alto] = (gruppo.estremi || {})[v] || [];
+      const post = daArchivio.get(v);
       return el('div', { className: 'scala' },
-        el('div', { className: 'voce-nome', textContent: v }),
+        el('div', { className: 'voce-nome', textContent: post ? `${v} ↗ ${post.raccolta}` : v }),
         el('div', { className: 'scala-numeri' },
           ...SCALA.map((n) => el('button', {
             type: 'button',
             className: 'scala-numero' + (valori[v] === n ? ' attivo' : '') + (n === SCALA_NORMALE ? ' normale' : ''),
             textContent: n,
             // Toccare il valore scelto lo toglie: non segnato non vuol dire 5.
-            onclick: () => cambiaValori(data, gruppo, { [v]: valori[v] === n ? null : n }),
+            onclick: () => (post ? apriModulo(post) : cambiaValori(data, gruppo, { [v]: valori[v] === n ? null : n })),
           }))),
         el('div', { className: 'scala-estremi' },
           el('span', { textContent: basso || 'Per niente' }),
@@ -932,7 +1029,15 @@ function disegnaOggi() {
   $('pagina-oggi').replaceChildren(
     el('div', { className: 'oggi-giorno' },
       el('button', { type: 'button', className: 'btn-testo', textContent: '‹', ariaLabel: 'Giorno prima', onclick: () => spostati(-1) }),
-      el('h2', { textContent: data === oggi() ? 'Oggi' : dataLeggibile(data) }),
+      el('div', { className: 'oggi-titolo' },
+        el('h2', { textContent: data === oggi() ? 'Oggi' : dataLeggibile(data) }),
+        el('button', {
+          type: 'button',
+          className: 'btn-testo btn-stella' + (giornataBella(data) ? ' attiva' : ''),
+          textContent: giornataBella(data) ? '★' : '☆',
+          ariaLabel: 'Giornata particolarmente bella',
+          onclick: () => salvaGiornata(data, { stella: !giornataBella(data) }),
+        })),
       el('button', { type: 'button', className: 'btn-testo', textContent: '›', ariaLabel: 'Giorno dopo', disabled: data >= oggi(), onclick: () => spostati(1) }),
     ),
     ...gruppi.map((g, i) => disegnaGruppo(data, g, scelte, i)),
@@ -965,6 +1070,7 @@ function disegnaOggi() {
 const PAGINE = {
   oggi: { elemento: 'pagina-oggi', disegna: disegnaOggi },
   diario: { elemento: 'timeline', disegna: disegnaTimeline },
+  archivio: { elemento: 'pagina-archivio', disegna: disegnaArchivio },
   calendario: { elemento: 'pagina-calendario', disegna: disegnaCalendario },
   statistiche: { elemento: 'pagina-statistiche', disegna: disegnaStatistiche },
 };
@@ -1238,6 +1344,148 @@ function vaiAlGiorno(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Archivio
+//
+// Le cose da ritrovare per tipo: libri, film, idee... Ogni voce è un ricordo
+// come gli altri (data, testo, foto, tag; compare nel diario nel suo giorno)
+// che in più ha `raccolta` e i `campi` di quella raccolta. Le raccolte stanno
+// nel codice, che è pubblico: qui solo nomi generici, il contenuto resta nei dati.
+// "Giorni belli" non è una raccolta: sono i giorni con la stella nella pagina Oggi.
+// ---------------------------------------------------------------------------
+
+// Tipi di campo: testo (senza tipo), 'data', 'voto' (da 1 a 9, come le scale di Oggi).
+// Il primo campo di testo fa da titolo. Le raccolte con `foto` si mostrano a griglia, e
+// il loro voto si può collegare a una scala di Oggi (vedi valoriDaArchivio).
+const RACCOLTE = [
+  { nome: 'Libri', campi: [{ nome: 'Titolo' }, { nome: 'Autore' }, { nome: 'Iniziato il', tipo: 'data' }, { nome: 'Giudizio', tipo: 'voto' }] },
+  { nome: 'Film', campi: [{ nome: 'Titolo' }, { nome: 'Voto', tipo: 'voto' }] },
+  { nome: 'Persone nuove', campi: [{ nome: 'Nome' }, { nome: 'Dove o come' }] },
+  { nome: 'Conversazioni', campi: [{ nome: 'Con chi' }] },
+  { nome: 'Idee', campi: [{ nome: 'Titolo' }, { nome: 'Sviluppo' }] },
+  { nome: 'Fantasie', campi: [{ nome: 'Titolo' }] },
+  { nome: 'Intuizioni', campi: [{ nome: 'Titolo' }] },
+  { nome: 'Scoperte', campi: [{ nome: 'Titolo' }, { nome: 'Fonte' }] },
+  { nome: 'Ragionamenti', campi: [{ nome: 'Titolo' }, { nome: 'Conclusione' }] },
+  { nome: 'Outfit', foto: true, campi: [{ nome: 'Voto', tipo: 'voto' }, { nome: 'Occasione' }] },
+  { nome: 'Scatti', foto: true, campi: [{ nome: 'Voto', tipo: 'voto' }] },
+];
+const GIORNI_BELLI = 'Giorni belli';
+
+let raccoltaAperta = null; // la raccolta mostrata; null vuol dire l'elenco delle raccolte
+let urlArchivio = []; // URL temporanei delle foto della griglia
+
+const raccoltaChiamata = (nome) => RACCOLTE.find((r) => r.nome === nome);
+const vociDi = (nome) => posts.filter((p) => p.raccolta === nome);
+const dataBreve = (data) => new Date(data + 'T00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+
+// Il primo voto della raccolta, se è stato dato
+function votoDi(post) {
+  const raccolta = raccoltaChiamata(post.raccolta);
+  const campo = raccolta && raccolta.campi.find((c) => c.tipo === 'voto');
+  return campo ? (post.campi || {})[campo.nome] : undefined;
+}
+
+function titoloDi(post) {
+  const raccolta = raccoltaChiamata(post.raccolta);
+  const campo = raccolta && raccolta.campi.find((c) => !c.tipo);
+  return (campo && (post.campi || {})[campo.nome]) || post.testo.split('\n')[0] || dataLeggibile(post.data);
+}
+
+// "Il nome della rosa · Autore: Eco · Giudizio 8"; senza titolo per gli elenchi, dove il titolo è a parte.
+function descrizioneCampi(post, conTitolo = true) {
+  const raccolta = raccoltaChiamata(post.raccolta);
+  const campi = post.campi || {};
+  if (!raccolta) return Object.entries(campi).map(([nome, valore]) => `${nome}: ${valore}`).join(' · ');
+  const titolo = raccolta.campi.find((c) => !c.tipo);
+  return raccolta.campi.filter((c) => campi[c.nome] && (conTitolo || c !== titolo)).map((c) => {
+    if (c.tipo === 'voto') return `${c.nome} ${campi[c.nome]}`;
+    if (c.tipo === 'data') return `${c.nome} ${dataBreve(campi[c.nome])}`;
+    return c === titolo ? campi[c.nome] : `${c.nome}: ${campi[c.nome]}`;
+  }).join(' · ');
+}
+
+function apriRaccolta(nome) {
+  raccoltaAperta = nome;
+  mostraPagina('archivio');
+}
+
+function disegnaArchivio() {
+  urlArchivio.forEach((u) => URL.revokeObjectURL(u));
+  urlArchivio = [];
+  if (raccoltaAperta) {
+    disegnaRaccolta(raccoltaAperta);
+    return;
+  }
+  const elenco = [[GIORNI_BELLI, giornate.filter((g) => g.stella).length], ...RACCOLTE.map((r) => [r.nome, vociDi(r.nome).length])];
+  $('pagina-archivio').replaceChildren(...elenco.map(([nome, n]) => el('button', {
+    className: 'raccolta',
+    onclick: () => apriRaccolta(nome),
+  }, el('span', { textContent: nome }), el('span', { className: 'raccolta-numero', textContent: n || '' }))));
+}
+
+function disegnaRaccolta(nome) {
+  const raccolta = raccoltaChiamata(nome);
+  const testa = el('div', { className: 'archivio-testa' },
+    el('button', { type: 'button', className: 'btn-testo', textContent: '‹ Archivio', onclick: () => { raccoltaAperta = null; mostraPagina('archivio'); } }),
+    el('h2', { textContent: nome }),
+    raccolta ? el('button', { type: 'button', className: 'btn-testo', textContent: '+ Aggiungi', onclick: () => apriModulo(null, oggi(), nome) }) : el('span'));
+
+  let voci;
+  if (nome === GIORNI_BELLI) {
+    voci = giornate.filter((g) => g.stella).sort((a, b) => b.data.localeCompare(a.data)).map((g) => {
+      const ricordi = posts.filter((p) => p.data === g.data).length;
+      return el('button', { className: 'voce-archivio', onclick: () => vaiAlGiorno(g.data) },
+        el('strong', { textContent: dataLeggibile(g.data) }),
+        el('span', { className: 'voce-archivio-info', textContent: [ricordi ? nRicordi(ricordi) : '', testoScelte(scelteDelGiorno(g.data))].filter(Boolean).join(' · ') }));
+    });
+  } else if (raccolta && raccolta.foto) {
+    voci = [el('div', { className: 'griglia-archivio' }, ...vociDi(nome).map((post) => {
+      const casella = el('button', { className: 'foto-archivio', onclick: () => apriModulo(post) });
+      if (post.foto.length) {
+        const url = URL.createObjectURL(post.foto[0]);
+        urlArchivio.push(url);
+        casella.append(el('img', { src: url, alt: '', loading: 'lazy' }));
+      } else {
+        casella.append(el('span', { className: 'foto-archivio-testo', textContent: titoloDi(post) }));
+      }
+      casella.append(el('span', { className: 'foto-archivio-info', textContent: [dataBreve(post.data), votoDi(post)].filter(Boolean).join(' · ') }));
+      return casella;
+    }))];
+  } else {
+    voci = vociDi(nome).map((post) => el('button', { className: 'voce-archivio', onclick: () => apriModulo(post) },
+      el('strong', { textContent: titoloDi(post) }),
+      el('span', { className: 'voce-archivio-info', textContent: [dataBreve(post.data), descrizioneCampi(post, false)].filter(Boolean).join(' · ') }),
+      post.testo ? el('span', { className: 'voce-archivio-testo', textContent: post.testo }) : ''));
+  }
+  const vuota = !(nome === GIORNI_BELLI ? giornate.some((g) => g.stella) : vociDi(nome).length);
+  $('pagina-archivio').replaceChildren(testa,
+    vuota
+      ? el('p', { className: 'vuoto', textContent: nome === GIORNI_BELLI ? 'Nessun giorno con la stella: si mette nella pagina Oggi, accanto alla data.' : 'Ancora niente. Tocca + Aggiungi.' })
+      : '',
+    ...voci,
+    raccolta && raccolta.foto ? disegnaCollegamento(nome) : '');
+}
+
+// Quale scala di Oggi segna il voto di questa raccolta. Si sceglie qui perché le scale
+// sono di chi usa il diario e non stanno nel codice.
+function disegnaCollegamento(nome) {
+  const collegamenti = (impostazioniGruppi && impostazioniGruppi.collegamenti) || {};
+  const scale = gruppiAttuali().filter((g) => g.tipo === 'scala').flatMap((g) => g.opzioni.map((voce) => ({ gruppo: g.nome, voce })));
+  const chiave = (c) => (c ? c.gruppo + '\n' + c.voce : '');
+  const scelta = el('select', {
+    onchange: (e) => {
+      const nuovi = { ...collegamenti };
+      const collegata = scale.find((s) => chiave(s) === e.target.value);
+      if (collegata) nuovi[nome] = collegata;
+      else delete nuovi[nome];
+      salvaImpostazioni({ collegamenti: nuovi });
+    },
+  }, el('option', { value: '', textContent: 'Nessuna' }), ...scale.map((s) => el('option', { value: chiave(s), textContent: `${s.gruppo} · ${s.voce}` })));
+  scelta.value = chiave(collegamenti[nome]);
+  return el('label', { className: 'collegamento' }, 'Il voto segna in Oggi la scala', scelta);
+}
+
+// ---------------------------------------------------------------------------
 // Deposito: la copia dei ricordi fuori dal browser
 //
 // L'archivio è IndexedDB; in più il diario si tiene allineato con un deposito,
@@ -1401,7 +1649,7 @@ async function prendiDaCartella(nome) {
 //   foto/NOME.jpg          le foto, col nome che hanno nella cartella photos/
 // ---------------------------------------------------------------------------
 
-const BACKUP_VERSIONE = 5; // la 1 non aveva l'ora nei post, la 2 né l'umore né le giornate, la 3 né scelte né gruppi, la 4 né scale né conteggi
+const BACKUP_VERSIONE = 6; // la 1 non aveva l'ora nei post, la 2 né l'umore né le giornate, la 3 né scelte né gruppi, la 4 né scale né conteggi, la 5 né archivio né stelle
 const CHIAVE_ULTIMO_BACKUP = 'diario.ultimoBackup';
 // I ricordi sono già copiati sul Drive: il promemoria si accende solo dopo un mese dall'ultimo backup.
 const GIORNI_PROMEMORIA = 30;
@@ -1563,6 +1811,8 @@ $('campo-importa').addEventListener('change', (e) => {
 $('btn-nuovo').onclick = () => apriModulo();
 $('btn-pagina-oggi').onclick = () => { giornoMostrato = null; mostraPagina('oggi'); };
 $('btn-pagina-diario').onclick = () => mostraPagina('diario');
+// Toccare Archivio mentre si è dentro una raccolta riporta all'elenco delle raccolte.
+$('btn-pagina-archivio').onclick = () => { if (paginaAttuale === 'archivio') raccoltaAperta = null; mostraPagina('archivio'); };
 $('btn-pagina-calendario').onclick = () => mostraPagina('calendario');
 $('btn-pagina-statistiche').onclick = () => mostraPagina('statistiche');
 $('btn-annulla').onclick = chiudiModulo;
@@ -1619,6 +1869,11 @@ $('campo-umore').addEventListener('keydown', (e) => {
     scegliUmore(e.target.value);
   }
 });
+
+$('campo-raccolta').onchange = (e) => {
+  formRaccolta = e.target.value;
+  disegnaRaccoltaModulo();
+};
 
 $('dlg-foto').onclick = () => $('dlg-foto').close();
 
