@@ -145,6 +145,43 @@ button { cursor: pointer; }
 .gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--colore); text-transform: uppercase; letter-spacing: 0.04em; }
 .gruppo-freccia { padding: 0 6px; color: var(--colore); }
 .chip-aggiungi { min-width: 36px; }
+.gruppo-comandi { display: flex; gap: 4px; }
+/* Scale da 1 a 9 e conteggi: una voce per riga */
+.voci { display: flex; flex-direction: column; gap: 12px; }
+.voce { display: flex; align-items: center; gap: 8px; }
+.voce-nome { flex: 1; font-size: 15px; }
+.voci .chip-aggiungi { align-self: flex-start; }
+.scala .voce-nome { margin-bottom: 6px; }
+.scala-numeri { display: flex; gap: 4px; }
+.scala-numero {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--carta);
+  color: var(--testo);
+  font-size: 15px;
+}
+.scala-numero.normale { border-color: var(--colore); }
+.scala-numero.attivo { background: var(--colore); border-color: var(--colore); color: var(--accento-testo); font-weight: 600; }
+.scala-estremi { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-size: 12px; color: var(--testo-tenue); }
+.scala-estremi span:last-child { text-align: right; }
+.btn-come-al-solito { align-self: flex-start; font-size: 14px; }
+.conta-pulsante, .conta-valore {
+  min-width: 40px;
+  height: 36px;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--carta);
+  color: var(--testo);
+  font-size: 17px;
+}
+.conta-pulsante:disabled { opacity: 0.35; }
+.conta-valore { min-width: 48px; color: var(--testo-tenue); }
+.conta-valore.attivo { background: var(--colore); border-color: var(--colore); color: var(--accento-testo); font-weight: 600; }
+.nuovi-gruppi { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .oggi-azioni { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .btn-modifica-gruppi {
   margin-left: auto;
