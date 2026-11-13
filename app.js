@@ -520,16 +520,36 @@ async function salvaModulo() {
 const GRUPPO_UMORE = 'Umore';
 // 5 è una giornata come al solito; 1 e 9 sono rari, tra le peggiori e le migliori.
 const SCALA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-// Un gruppo di voti può avere una scala più corta (`massimo`: da 1 a 5...), sempre dispari,
-// così il numero di mezzo è "come al solito". Senza `massimo` è da 1 a 9.
-const MASSIMI = [3, 5, 7, 9];
-const massimoDi = (gruppo) => gruppo.massimo || 9;
-const scalaDi = (gruppo) => Array.from({ length: massimoDi(gruppo) }, (_, i) => i + 1);
-const normaleDi = (gruppo) => (massimoDi(gruppo) + 1) / 2;
-// Un voto riportato da 1 a 9, per benessere e colori: 5 su 5 vale 9, 3 su 5 vale 5.
-const suNove = (n, massimo) => Math.min(9, 1 + ((n - 1) * 8) / (massimo - 1));
-// Un voto portato da una scala a un'altra, arrotondato (i voti dell'archivio sono da 1 a 9).
-const sullaScala = (n, da, a) => Math.min(a, Math.max(1, Math.round(1 + ((n - 1) * (a - 1)) / (da - 1))));
+// Ogni gruppo di voti ha la sua scala: `minimo`, `massimo` e `normale`, il numero che vuol dire
+// "come al solito" (la Libido da -1 a 2, normale 0). Senza, è da 1 a 9 con normale 5; un
+// gruppo che ha solo `massimo` (fatto quando le scale erano solo da 1 a 3, 5, 7, 9) ha il
+// normale in mezzo. Anche un oggetto qualsiasi con questi campi fa da scala (SCALA_BASE).
+const SCALA_BASE = { minimo: 1, massimo: 9, normale: 5 };
+const CASELLE_MAX = 11; // quante caselle stanno in una riga del telefono
+const minimoDi = (scala) => scala.minimo ?? 1;
+const massimoDi = (scala) => scala.massimo ?? 9;
+const normaleDi = (scala) => scala.normale ?? Math.round((minimoDi(scala) + massimoDi(scala)) / 2);
+const scalaDi = (scala) => Array.from({ length: massimoDi(scala) - minimoDi(scala) + 1 }, (_, i) => minimoDi(scala) + i);
+const eScalaBase = (scala) => minimoDi(scala) === 1 && massimoDi(scala) === 9 && normaleDi(scala) === 5;
+// "−1", "+2" sulle scale che vanno sotto lo zero; altrimenti il numero com'è.
+const scriviSuScala = (n, scala) => (minimoDi(scala) < 0 && n > 0 ? '+' : '') + numeroLeggibile(Math.round(n * 10) / 10).replace('-', '−');
+const descriviScala = (scala) => `da ${scriviSuScala(minimoDi(scala), scala)} a ${scriviSuScala(massimoDi(scala), scala)}, normale ${scriviSuScala(normaleDi(scala), scala)}`;
+
+// Un voto riportato da 1 a 9, per benessere e colori: il minimo vale 1, il normale 5, il
+// massimo 9, e in mezzo in proporzione da ciascuna parte (Libido: -1 → 1, 0 → 5, 1 → 7, 2 → 9).
+function suNove(n, scala) {
+  const [min, normale, max] = [minimoDi(scala), normaleDi(scala), massimoDi(scala)];
+  const v = n <= normale
+    ? (normale === min ? 5 : 1 + ((n - min) * 4) / (normale - min))
+    : (normale === max ? 5 : 5 + ((n - normale) * 4) / (max - normale));
+  return Math.min(9, Math.max(1, v));
+}
+// Al contrario: da 1–9 a un numero intero della scala (per i voti dell'archivio e per cambiare scala).
+function daNove(v, scala) {
+  const [min, normale, max] = [minimoDi(scala), normaleDi(scala), massimoDi(scala)];
+  const n = v <= 5 ? min + ((v - 1) * (normale - min)) / 4 : normale + ((v - 5) * (max - normale)) / 4;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
 const GRUPPI_DI_BASE = [
   { nome: GRUPPO_UMORE, opzioni: UMORI_DI_BASE },
   { nome: 'Attività fisica', opzioni: ['Niente', 'Palestra', 'Calisthenics'] },
@@ -751,7 +771,7 @@ function scelteDelGiorno(data) {
     if (!daArchivio.size) continue;
     const g = gruppoChiamato(gruppo, scelte[gruppo]);
     scelte[gruppo] = { ...valoriDi(g, scelte[gruppo]) };
-    for (const [voce, post] of daArchivio) scelte[gruppo][voce] = sullaScala(votoDi(post), 9, massimoDi(g));
+    for (const [voce, post] of daArchivio) scelte[gruppo][voce] = daNove(votoDi(post), g);
   }
   return scelte;
 }
@@ -917,21 +937,23 @@ const eNumero = (gruppo, voce) => (gruppo.numeri || []).includes(voce);
 // avevano solo `estremi`, cioè le parole di 1 e di 9.
 function paroleDi(gruppo, voce) {
   const parole = (gruppo.parole || {})[voce];
-  if (parole) return scalaDi(gruppo).map((n) => parole[n - 1] || '');
+  const quante = scalaDi(gruppo).length;
+  if (parole) return Array.from({ length: quante }, (_, i) => parole[i] || '');
   const [basso, alto] = (gruppo.estremi || {})[voce] || [];
-  return scalaDi(gruppo).map((n) => (n === 1 ? basso || '' : n === massimoDi(gruppo) ? alto || '' : ''));
+  return Array.from({ length: quante }, (_, i) => (i === 0 ? basso || '' : i === quante - 1 ? alto || '' : ''));
 }
 
 // Si scrivono tutte insieme separate da /, dove i punti senza parola restano vuoti:
 // "Distrutto / / / / Normale / / / / Riposatissimo". Con due parole sole sono 1 e 9.
 function cambiaParole(nomeGruppo, voce) {
   const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
-  const massimo = massimoDi(gruppo);
-  const scritte = prompt(`${voce}: le parole per 1, 2… ${massimo}, separate da /. Con due parole sole valgono per 1 e ${massimo}.`, paroleDi(gruppo, voce).join(' / '));
+  const numeri = scalaDi(gruppo).map((n) => scriviSuScala(n, gruppo));
+  const quante = numeri.length;
+  const scritte = prompt(`${voce}: le parole per ${numeri.join(', ')}, separate da /. Con due parole sole valgono per ${numeri[0]} e ${numeri[quante - 1]}.`, paroleDi(gruppo, voce).join(' / '));
   if (scritte === null) return;
   let pezzi = scritte.split('/').map((p) => p.trim());
-  if (pezzi.length === 2) pezzi = scalaDi(gruppo).map((n) => (n === 1 ? pezzi[0] : n === massimo ? pezzi[1] : ''));
-  const parole = scalaDi(gruppo).map((n) => pezzi[n - 1] || '');
+  if (pezzi.length === 2) pezzi = Array.from({ length: quante }, (_, i) => (i === 0 ? pezzi[0] : i === quante - 1 ? pezzi[1] : ''));
+  const parole = Array.from({ length: quante }, (_, i) => pezzi[i] || '');
   cambiaGruppo(nomeGruppo, (g) => ({ ...g, parole: { ...g.parole, [voce]: parole } }));
 }
 
@@ -945,32 +967,43 @@ function converti(nomeGruppo, tipo) {
   cambiaGruppo(nomeGruppo, (g) => ({ nome: g.nome, tipo, opzioni: [g.nome], ...(g.sezione ? { sezione: g.sezione } : {}) }));
 }
 
-// Un gruppo di voti passa a un'altra scala (da 1 a 5...). I voti già segnati vengono portati
-// sulla nuova in proporzione (da 1–9 a 1–5: 9 diventa 5, 5 diventa 3) e i giorni riscritti,
-// così il cambio arriva anche al Drive. Delle parole dei punti restano quelle degli estremi.
-async function cambiaScala(nomeGruppo, massimo) {
+// Un gruppo di voti passa a un'altra scala: si scrive "da, a, normale" (per esempio -1, 2, 0).
+// I voti già segnati vengono portati sulla nuova in proporzione, passando dalla scala 1–9
+// (il minimo resta minimo, il normale normale, il massimo massimo), e i giorni riscritti, così
+// il cambio arriva anche al Drive. Delle parole dei punti restano quelle degli estremi.
+async function cambiaScala(nomeGruppo) {
   const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
-  const prima = massimoDi(gruppo);
-  if (massimo === prima) return;
+  const attuale = [minimoDi(gruppo), massimoDi(gruppo), normaleDi(gruppo)].join(', ');
+  const scritta = prompt(`Scala di ${nomeGruppo}: da, a, normale (il numero che vuol dire "come al solito"). Per esempio: 1, 9, 5 oppure -1, 2, 0`, attuale);
+  if (scritta === null) return;
+  const numeri = scritta.replace(/−/g, '-').split(/[,;\s]+/).filter(Boolean).map(Number);
+  const [minimo, massimo, normale = Math.round((minimo + massimo) / 2)] = numeri;
+  if (numeri.length < 2 || numeri.length > 3 || !numeri.every(Number.isInteger)
+    || minimo >= massimo || normale < minimo || normale > massimo || massimo - minimo + 1 > CASELLE_MAX) {
+    alert(`Scrivi due o tre numeri interi: da, a e normale, con "da" più piccolo di "a", il normale in mezzo e al massimo ${CASELLE_MAX} numeri in tutto.`);
+    return;
+  }
+  const dopo = { ...gruppo, minimo, massimo, normale };
+  if (descriviScala(dopo) === descriviScala(gruppo)) return;
   const eVoto = (voce) => !eNumero(gruppo, voce);
   const giorni = giornate.filter((g) => {
     const v = g.scelte[nomeGruppo];
     return v && !Array.isArray(v) && Object.keys(v).some(eVoto);
   });
-  const dopo = { ...gruppo, massimo };
-  if (giorni.length && !confirm(`${nomeGruppo} passa da 1–${prima} a 1–${massimo}. I voti già segnati (${giorni.length === 1 ? '1 giorno' : giorni.length + ' giorni'}) vengono convertiti in proporzione: ${prima} diventa ${massimo}, ${normaleDi(gruppo)} diventa ${normaleDi(dopo)}. Se vuoi poter tornare indietro, fai prima un backup.`)) {
-    disegnaOggi(); // rimette la scelta di prima
-    return;
-  }
+  const converti = (n) => daNove(suNove(n, gruppo), dopo);
+  const esempi = [...new Set([minimoDi(gruppo), normaleDi(gruppo), massimoDi(gruppo)])]
+    .map((n) => `${scriviSuScala(n, gruppo)} diventa ${scriviSuScala(converti(n), dopo)}`).join(', ');
+  if (giorni.length && !confirm(`${nomeGruppo} passa alla scala ${descriviScala(dopo)}. I voti già segnati (${giorni.length === 1 ? '1 giorno' : giorni.length + ' giorni'}) vengono convertiti in proporzione: ${esempi}. Se vuoi poter tornare indietro, fai prima un backup.`)) return;
   const parole = Object.fromEntries(gruppo.opzioni.filter(eVoto).map((voce) => {
     const vecchie = paroleDi(gruppo, voce);
-    return [voce, scalaDi(dopo).map((n) => (n === 1 ? vecchie[0] : n === massimo ? vecchie[prima - 1] : ''))];
+    const quante = scalaDi(dopo).length;
+    return [voce, Array.from({ length: quante }, (_, i) => (i === 0 ? vecchie[0] : i === quante - 1 ? vecchie[vecchie.length - 1] : ''))];
   }));
-  cambiaGruppo(nomeGruppo, (g) => ({ ...g, massimo, parole: { ...g.parole, ...parole } }));
+  cambiaGruppo(nomeGruppo, (g) => ({ ...g, minimo, massimo, normale, parole: { ...g.parole, ...parole } }));
   const adesso = Date.now();
   for (const g of giorni) {
     const valori = Object.fromEntries(Object.entries(g.scelte[nomeGruppo])
-      .map(([voce, n]) => [voce, eVoto(voce) ? sullaScala(n, prima, massimo) : n]));
+      .map(([voce, n]) => [voce, eVoto(voce) ? converti(n) : n]));
     await salvaPost({ ...g, scelte: { ...g.scelte, [nomeGruppo]: valori }, modificato: adesso });
   }
   if (giorni.length) await ricarica();
@@ -1053,11 +1086,7 @@ function disegnaComandiGruppo(gruppo) {
   sezione.value = sezioneDi(gruppo);
   const pulsante = (testo, azione) => el('button', { type: 'button', className: 'btn-testo', textContent: testo, onclick: azione });
   const aScelte = !gruppo.tipo && gruppo.nome !== GRUPPO_UMORE;
-  const scala = el('select', {
-    ariaLabel: 'Scala dei voti',
-    onchange: (e) => cambiaScala(gruppo.nome, Number(e.target.value)).catch(mostraErrore),
-  }, ...MASSIMI.map((m) => el('option', { value: m, textContent: `Da 1 a ${m}` })));
-  scala.value = massimoDi(gruppo);
+  const scala = pulsante('Scala: ' + descriviScala(gruppo), () => cambiaScala(gruppo.nome).catch(mostraErrore));
   return el('div', { className: 'gruppo-comandi' },
     inElenco ? sezione : '',
     inElenco && gruppo.tipo === 'scala' && gruppo.opzioni.some((v) => !eNumero(gruppo, v)) ? scala : '',
@@ -1135,29 +1164,31 @@ function disegnaVociInModifica(gruppo) {
 // (1) al verde (9). Toccare una casella la sceglie, toccare quella scelta la toglie; il numero
 // scelto prende il colore della sua casella. Finché non si tocca niente non è segnato (non
 // vale 5). Serve in Oggi e nei voti dell'archivio.
-//   parole: le 9 parole dei numeri ('' dove non c'è): quella scelta compare accanto al nome
+//   parole: le parole dei numeri, in ordine ('' dove non c'è): quella scelta compare accanto al nome
 //   scegli(n), togli(): chiamate al tocco
 //   apri(): se c'è, il valore non si cambia qui (viene dall'archivio, da `da`) e toccare apre
-//   massimo: l'ultimo numero (9 se non si dice)
-function creaVoto({ nome, valore, parole, scegli, togli, apri, da = '', massimo = 9 }) {
-  const dettaglio = apri ? 'da ' + da : (valore && parole[valore - 1]) || '';
+//   scala: { minimo, massimo, normale } (da 1 a 9 se non si dice); la casella del normale è segnata
+function creaVoto({ nome, valore, parole, scegli, togli, apri, da = '', scala = SCALA_BASE }) {
+  const segnato = valore !== undefined && valore !== null; // 0 è un voto vero
+  const numeri = scalaDi(scala);
+  const dettaglio = apri ? 'da ' + da : (segnato && parole[valore - minimoDi(scala)]) || '';
   return el('div', { className: 'voto' },
     el('div', { className: 'voto-nome' },
       el('span', { textContent: nome }),
       dettaglio ? el('span', { className: 'voto-parola', textContent: dettaglio }) : ''),
-    valore
-      ? el('span', { className: 'voto-valore tinta', style: `--n: ${suNove(valore, massimo)}`, textContent: valore + (apri ? ' ↗' : '') })
+    segnato
+      ? el('span', { className: 'voto-valore tinta', style: `--n: ${suNove(valore, scala)}`, textContent: scriviSuScala(valore, scala) + (apri ? ' ↗' : '') })
       : el('span'),
-    el('div', { className: 'voto-caselle', style: `--caselle: ${massimo}` }, ...Array.from({ length: massimo }, (_, i) => i + 1).map((n) => el('button', {
+    el('div', { className: 'voto-caselle', style: `--caselle: ${numeri.length}` }, ...numeri.map((n) => el('button', {
       type: 'button',
-      className: 'voto-casella tinta' + (n === valore ? ' scelta' : ''),
-      style: `--n: ${suNove(n, massimo)}`,
-      textContent: n,
+      className: 'voto-casella tinta' + (n === valore ? ' scelta' : '') + (n === normaleDi(scala) && !eScalaBase(scala) ? ' normale' : ''),
+      style: `--n: ${suNove(n, scala)}`,
+      textContent: scriviSuScala(n, scala),
       ariaLabel: `${nome}: ${n}`,
       onclick: apri || (() => (n === valore ? togli() : scegli(n))),
     }))),
-    parole[0] || parole[massimo - 1]
-      ? el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[massimo - 1] }))
+    parole[0] || parole[numeri.length - 1]
+      ? el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[numeri.length - 1] }))
       : '');
 }
 
@@ -1166,7 +1197,7 @@ function disegnaVoto(data, gruppo, voce, valore, post) {
     nome: conIcona(voce),
     valore,
     parole: paroleDi(gruppo, voce),
-    massimo: massimoDi(gruppo),
+    scala: gruppo,
     scegli: (n) => cambiaValori(data, gruppo, { [voce]: n }),
     togli: () => cambiaValori(data, gruppo, { [voce]: null }),
     // Il valore viene da una voce dell'archivio: si cambia da lì.
@@ -1202,7 +1233,7 @@ function disegnaScale(data, gruppo, scelte) {
   const daArchivio = valoriDaArchivio(data, gruppo.nome);
   const segnato = scelte[gruppo.nome];
   const valori = { ...valoriDi(gruppo, segnato) };
-  for (const [voce, post] of daArchivio) valori[voce] = sullaScala(votoDi(post), 9, massimoDi(gruppo));
+  for (const [voce, post] of daArchivio) valori[voce] = daNove(votoDi(post), gruppo);
   const voci = [...new Set([...gruppo.opzioni, ...Object.keys(valori)])];
   const voti = voci.filter((v) => !eNumero(gruppo, v));
   const vuoti = voti.filter((v) => !(v in valori));
@@ -1216,7 +1247,7 @@ function disegnaScale(data, gruppo, scelte) {
       ? el('button', {
         type: 'button',
         className: 'btn-secondario btn-come-al-solito',
-        textContent: `${vuoti.length === voti.length ? 'Tutto' : 'Gli altri'} come al solito (${normaleDi(gruppo)})`,
+        textContent: `${vuoti.length === voti.length ? 'Tutto' : 'Gli altri'} come al solito (${scriviSuScala(normaleDi(gruppo), gruppo)})`,
         onclick: () => cambiaValori(data, gruppo, Object.fromEntries(vuoti.map((v) => [v, normaleDi(gruppo)]))),
       })
       : '',
@@ -1417,7 +1448,7 @@ function benessereDi(riassunto) {
   for (const [gruppo, voti] of riassunto.voti) {
     for (const [voce, n] of voti) {
       const peso = pesoDi(gruppo.nome, voce);
-      somma += suNove(n, massimoDi(gruppo)) * peso;
+      somma += suNove(n, gruppo) * peso;
       pesi += peso;
     }
   }
@@ -1434,9 +1465,9 @@ function riquadroVoti(gruppo, valori, nota = '', onclick = undefined) {
   return riquadro({
     icona: iconaDi(nome) || iconaDi(gruppo.nome),
     nome,
-    valore: scriviVoto(m),
-    voto: suNove(m, massimoDi(gruppo)),
-    nota: [nota, massimoDi(gruppo) === 9 ? '' : 'su ' + massimoDi(gruppo)].filter(Boolean).join(' · '),
+    valore: scriviSuScala(m, gruppo),
+    voto: suNove(m, gruppo),
+    nota: [nota, eScalaBase(gruppo) ? '' : `da ${scriviSuScala(minimoDi(gruppo), gruppo)} a ${scriviSuScala(massimoDi(gruppo), gruppo)}`].filter(Boolean).join(' · '),
     onclick,
   });
 }

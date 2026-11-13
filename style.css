@@ -204,6 +204,7 @@ button { cursor: pointer; }
   font-weight: 600;
   line-height: 1.2;
 }
+.voto-casella.normale { border-width: 2px; border-color: var(--tinta); }
 .voto-casella.scelta { background: var(--tinta); border-color: var(--tinta); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
 .voto .scala-estremi { grid-column: 1 / -1; margin-top: -2px; font-size: 11px; }
 .casella-numero {
