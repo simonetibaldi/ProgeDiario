@@ -176,26 +176,26 @@ button { cursor: pointer; }
 .sezione .gruppo + .gruppo { border-top: 1px solid var(--bordo); padding-top: 12px; }
 .sezione .gruppo-testa h3 { color: var(--testo); font-size: 12px; opacity: 0.75; }
 /* Slider da 1 a 9: un pallino per numero */
-/* Slider da 1 a 9 su una riga: nome, pallini, valore; sotto, piccole, le parole degli estremi */
+/* Slider da 1 a 9: sopra nome e valore, sotto i pallini; ancora più sotto, piccole, le parole degli estremi */
 .slider-voce {
   display: grid;
-  grid-template-columns: minmax(0, 30%) 1fr 28px;
-  align-items: center;
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 8px;
 }
-.slider-nome { display: flex; flex-direction: column; min-width: 0; font-size: 15px; line-height: 1.2; }
-.slider-parola { font-size: 12px; color: var(--testo-tenue); }
+.slider-nome { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: 15px; }
+.slider-parola { font-size: 13px; color: var(--testo-tenue); }
 .slider-parola:empty { display: none; }
-.slider-valore { text-align: right; font-size: 15px; font-weight: 600; color: var(--colore); }
-.slider-voce .scala-estremi { grid-column: 2; margin-top: -4px; font-size: 11px; }
-.slider { position: relative; height: 34px; touch-action: pan-y; cursor: pointer; --valore: 0; }
+.slider-valore { font-size: 16px; font-weight: 600; color: var(--colore); }
+.slider { grid-column: 1 / -1; position: relative; height: 38px; touch-action: pan-y; cursor: pointer; --valore: 4; }
+.slider-voce .scala-estremi { grid-column: 1 / -1; margin-top: -6px; font-size: 11px; }
 .slider-linea {
   position: absolute;
   left: 14px;
   right: 14px;
   top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
+  height: 4px;
+  margin-top: -2px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--testo) 18%, transparent);
 }
@@ -213,21 +213,23 @@ button { cursor: pointer; }
   position: absolute;
   top: 50%;
   left: calc(14px + (100% - 28px) * var(--i) / 8);
-  width: 9px;
-  height: 9px;
-  margin: -4.5px 0 0 -4.5px;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--testo) 30%, var(--carta));
 }
-.slider-punto.normale { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; }
 .slider-punto.attivo {
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
   background: var(--colore);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
-.slider.vuoto .slider-linea::after { display: none; }
+/* Non ancora segnato: sta sul 5, spento */
+.slider-voce.vuoto .slider-valore { color: var(--testo-tenue); font-weight: normal; }
+.slider-voce.vuoto .slider-linea::after { opacity: 0.35; }
+.slider-voce.vuoto .slider-punto.attivo { background: color-mix(in srgb, var(--colore) 40%, var(--carta)); box-shadow: none; }
 .casella-numero {
   width: 84px;
   border: 1px solid var(--bordo);

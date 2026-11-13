@@ -1036,9 +1036,10 @@ function disegnaVociInModifica(gruppo) {
   );
 }
 
-// Uno slider da 1 a 9 su una riga: il nome, un pallino per ogni numero, il valore.
+// Uno slider da 1 a 9: sopra il nome e il valore, sotto un pallino per ogni numero.
 // Si tocca un punto o si trascina; toccare di nuovo il punto scelto lo toglie.
-// Finché non si tocca è spento: non segnato non vuol dire 5. Serve in Oggi e nei voti dell'archivio.
+// Finché non si tocca sta sul 5 ma spento: non è segnato, quindi non vale 5 (per segnare 5
+// basta toccarlo). Serve in Oggi e nei voti dell'archivio.
 //   parole: le 9 parole dei punti ('' dove non c'è): quella scelta compare sotto il nome
 //   scegli(n), togli(): chiamate quando si lascia il dito
 //   apri(): se c'è, il valore non si cambia qui (viene dall'archivio, da `da`) e toccare apre
@@ -1047,11 +1048,13 @@ function creaSlider({ nome, valore, parole, scegli, togli, apri, da = '' }) {
   const dettaglio = el('span', { className: 'slider-parola' });
   const punti = SCALA.map((n) => el('span', { className: 'slider-punto' + (n === SCALA_NORMALE ? ' normale' : ''), style: `--i: ${n - 1}` }));
   const binario = el('div', { className: 'slider' }, el('span', { className: 'slider-linea' }), ...punti);
+  const voce = el('div', { className: 'slider-voce' });
   const mostra = (n) => {
-    punti.forEach((p, i) => p.classList.toggle('attivo', i + 1 === n));
-    binario.classList.toggle('vuoto', !n);
-    binario.style.setProperty('--valore', n ? n - 1 : 0);
-    scritta.textContent = (n || '–') + (apri ? ' ↗' : '');
+    const posizione = n || SCALA_NORMALE;
+    punti.forEach((p, i) => p.classList.toggle('attivo', i + 1 === posizione));
+    voce.classList.toggle('vuoto', !n);
+    binario.style.setProperty('--valore', posizione - 1);
+    scritta.textContent = posizione + (apri ? ' ↗' : '');
     dettaglio.textContent = apri ? 'da ' + da : (n && parole[n - 1]) || '';
   };
   mostra(valore);
@@ -1088,13 +1091,14 @@ function creaSlider({ nome, valore, parole, scegli, togli, apri, da = '' }) {
       mostra(valore);
     };
   }
-  return el('div', { className: 'slider-voce' },
+  voce.append(
     el('div', { className: 'slider-nome' }, el('span', { textContent: nome }), dettaglio),
-    binario,
     scritta,
+    binario,
     parole[0] || parole[8]
       ? el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[8] }))
       : '');
+  return voce;
 }
 
 function disegnaSlider(data, gruppo, voce, valore, post) {
