@@ -37,6 +37,12 @@
   }
 }
 
+/* Il colore di un voto da 1 a 9 (in --n, anche con la virgola): dal rosso al verde */
+.tinta { --tinta: hsl(calc((var(--n) - 1) * 15) 70% 42%); }
+@media (prefers-color-scheme: dark) {
+  .tinta { --tinta: hsl(calc((var(--n) - 1) * 15) 60% 58%); }
+}
+
 * { box-sizing: border-box; }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -85,6 +91,7 @@ button { cursor: pointer; }
 }
 
 .testata h1 {
+  flex: 1;
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 26px;
@@ -175,61 +182,30 @@ button { cursor: pointer; }
 .sezione .gruppo { border: 0; border-radius: 0; background: none; padding: 0; }
 .sezione .gruppo + .gruppo { border-top: 1px solid var(--bordo); padding-top: 12px; }
 .sezione .gruppo-testa h3 { color: var(--testo); font-size: 12px; opacity: 0.75; }
-/* Slider da 1 a 9: un pallino per numero */
-/* Slider da 1 a 9: sopra nome e valore, sotto i pallini; ancora più sotto, piccole, le parole degli estremi */
-.slider-voce {
+/* Voto da 1 a 9: sopra nome e numero scelto, sotto nove caselle dal rosso al verde */
+.voto {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   column-gap: 8px;
+  row-gap: 6px;
 }
-.slider-nome { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: 15px; }
-.slider-parola { font-size: 13px; color: var(--testo-tenue); }
-.slider-parola:empty { display: none; }
-.slider-valore { font-size: 16px; font-weight: 600; color: var(--colore); }
-.slider { grid-column: 1 / -1; position: relative; height: 38px; touch-action: pan-y; cursor: pointer; --valore: 4; }
-.slider-voce .scala-estremi { grid-column: 1 / -1; margin-top: -6px; font-size: 11px; }
-.slider-linea {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  top: 50%;
-  height: 4px;
-  margin-top: -2px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--testo) 18%, transparent);
+.voto-nome { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; font-size: 15px; }
+.voto-parola { font-size: 13px; color: var(--testo-tenue); }
+.voto-valore { font-size: 18px; font-weight: 700; color: var(--tinta); }
+.voto-caselle { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(var(--caselle, 9), minmax(0, 1fr)); gap: 4px; }
+.voto-casella {
+  border: 1px solid color-mix(in srgb, var(--tinta) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tinta) 12%, var(--carta));
+  padding: 7px 0;
+  color: var(--tinta);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
 }
-.slider-linea::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: calc(100% * var(--valore) / 8);
-  border-radius: 2px;
-  background: var(--colore);
-}
-.slider-punto {
-  position: absolute;
-  top: 50%;
-  left: calc(14px + (100% - 28px) * var(--i) / 8);
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--testo) 30%, var(--carta));
-}
-.slider-punto.attivo {
-  width: 26px;
-  height: 26px;
-  margin: -13px 0 0 -13px;
-  background: var(--colore);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-/* Non ancora segnato: sta sul 5, spento */
-.slider-voce.vuoto .slider-valore { color: var(--testo-tenue); font-weight: normal; }
-.slider-voce.vuoto .slider-linea::after { opacity: 0.35; }
-.slider-voce.vuoto .slider-punto.attivo { background: color-mix(in srgb, var(--colore) 40%, var(--carta)); box-shadow: none; }
+.voto-casella.scelta { background: var(--tinta); border-color: var(--tinta); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+.voto .scala-estremi { grid-column: 1 / -1; margin-top: -2px; font-size: 11px; }
 .casella-numero {
   width: 84px;
   border: 1px solid var(--bordo);
@@ -291,14 +267,146 @@ button { cursor: pointer; }
 }
 .barra-pagine button {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   border: 0;
   background: none;
   min-width: 0;
-  padding: 14px 0;
+  padding: 8px 0 10px;
   color: var(--testo-tenue);
-  font-size: 13px; /* cinque pagine devono stare anche sul telefono più stretto */
+  font-size: 12px; /* cinque pagine devono stare anche sul telefono più stretto */
 }
+.barra-pagine .pagina-icona { font-size: 20px; line-height: 1.2; filter: grayscale(1); opacity: 0.6; }
 .barra-pagine button.attiva { color: var(--accento); font-weight: 600; }
+.barra-pagine button.attiva .pagina-icona { filter: none; opacity: 1; }
+
+/* Menu laterale (☰) */
+
+.btn-menu { padding: 2px 14px 2px 0; font-size: 24px; line-height: 1; color: var(--testo); }
+.dlg-menu {
+  inset: 0 auto 0 0;
+  margin: 0;
+  width: min(280px, 80vw);
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-right: 1px solid var(--bordo);
+  padding: 0;
+  background: var(--sfondo);
+  color: var(--testo);
+}
+.dlg-menu::backdrop { background: rgb(0 0 0 / 0.35); }
+.menu {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: calc(20px + env(safe-area-inset-top)) 12px calc(20px + env(safe-area-inset-bottom));
+}
+.menu h2 {
+  margin: 0 14px 16px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 26px;
+  font-weight: 600;
+}
+.menu-voci { display: flex; flex-direction: column; gap: 2px; }
+.menu-voci hr { width: 100%; border: 0; border-top: 1px solid var(--bordo); margin: 10px 0; }
+.menu-voce {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  padding: 12px 14px;
+  font-size: 17px;
+  text-align: left;
+}
+.menu-voce .pagina-icona { width: 28px; font-size: 22px; text-align: center; }
+.menu-voce.attiva { background: var(--chip); color: var(--accento); font-weight: 600; }
+
+/* Home */
+
+.pagina-home {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px calc(90px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.home-testa h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+  font-weight: 600;
+}
+.home-data { margin: 0; color: var(--testo-tenue); }
+.home-data::first-letter { text-transform: uppercase; }
+.home-titolo {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--testo-tenue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.riquadri { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.riquadro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--carta);
+  padding: 12px 14px;
+  color: var(--testo);
+  text-align: left;
+}
+.riquadro-nome { max-width: 100%; font-size: 14px; color: var(--testo-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.riquadro-valore { max-width: 100%; font-size: 24px; line-height: 1.25; overflow-wrap: anywhere; }
+.riquadro-nota { font-size: 12px; color: var(--testo-tenue); }
+.riquadro-vuoto { width: 100%; gap: 6px; }
+.riquadro.largo { grid-column: 1 / -1; }
+.riquadro.largo .riquadro-valore { font-size: 30px; }
+.riquadro-valore.tinta { color: var(--tinta); }
+
+/* Colonne del benessere degli ultimi giorni */
+.grafico { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; width: 100%; margin-top: 10px; }
+.grafico-giorno { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.grafico-numero { font-size: 11px; color: var(--testo-tenue); min-height: 1.3em; }
+.grafico-spazio {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 70px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--testo) 6%, transparent);
+}
+.grafico-colonna { width: 100%; border-radius: 6px; background: var(--tinta); }
+.grafico-data { font-size: 11px; color: var(--testo-tenue); }
+.riquadro-vuoto strong { font-size: 16px; color: var(--accento); }
+
+/* Icone in Modifica: toccandole si cambiano */
+.btn-icona {
+  margin-right: 6px;
+  border: 1px dashed var(--bordo);
+  border-radius: 8px;
+  background: var(--carta);
+  padding: 0 4px;
+  min-width: 28px;
+  font-size: 15px;
+  line-height: 24px;
+  text-transform: none;
+}
+.btn-icona.senza { color: var(--testo-tenue); }
+.chip-modifica { display: inline-flex; align-items: center; padding: 2px 10px 2px 3px; }
+.chip-modifica .btn-icona { margin-right: 4px; line-height: 22px; }
+.chip-modifica > button:last-child { border: 0; background: none; padding: 0; font-size: 14px; }
 
 /* Chip (tag) */
 
@@ -777,3 +885,33 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 /* Nel diario: in che raccolta dell'archivio sta il ricordo */
 .post-raccolta { margin: 6px 0 0; font-size: 14px; color: var(--testo-tenue); }
 .post-raccolta .btn-testo { padding: 0; font-size: 14px; }
+
+/* Impostazioni */
+
+.pagina-impostazioni {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px calc(90px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.impostazioni-titolo { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 26px; font-weight: 600; }
+.impostazione {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--carta);
+  padding: 14px;
+}
+.impostazione h3 { margin: 0; font-size: 17px; }
+.impostazione .nota { margin: 0; }
+.impostazione-anteprima { margin: 0; font-size: 15px; }
+.impostazione-anteprima strong { font-size: 18px; }
+.pesi-gruppo { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--bordo); padding-top: 10px; }
+.pesi-gruppo h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--testo-tenue); text-transform: uppercase; letter-spacing: 0.04em; }
+.peso { display: flex; align-items: center; gap: 10px; }
+.peso-scelte { display: flex; gap: 4px; }
+.peso-scelte .chip { min-width: 34px; padding: 4px 0; text-align: center; }

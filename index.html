@@ -15,25 +15,31 @@
 <body>
   <header class="testata">
     <div class="testata-riga">
+      <button id="btn-menu" class="btn-testo btn-menu" aria-label="Menu">☰</button>
       <h1>Diario</h1>
       <button id="btn-backup" class="btn-testo btn-backup">Backup</button>
     </div>
     <div id="filtri" class="filtri"></div>
   </header>
 
-  <main id="pagina-oggi" class="pagina-oggi"></main>
+  <main id="pagina-home" class="pagina-home"></main>
+  <main id="pagina-oggi" class="pagina-oggi" hidden></main>
   <main id="timeline" class="timeline" hidden></main>
   <main id="pagina-archivio" class="pagina-archivio" hidden></main>
   <main id="pagina-calendario" class="pagina-calendario" hidden></main>
   <main id="pagina-statistiche" class="pagina-statistiche" hidden></main>
+  <main id="pagina-impostazioni" class="pagina-impostazioni" hidden></main>
 
-  <nav class="barra-pagine">
-    <button id="btn-pagina-oggi">Oggi</button>
-    <button id="btn-pagina-diario">Diario</button>
-    <button id="btn-pagina-archivio">Archivio</button>
-    <button id="btn-pagina-calendario">Calendario</button>
-    <button id="btn-pagina-statistiche">Statistiche</button>
-  </nav>
+  <!-- Le pagine: i pulsanti li mette disegnaMenu, in app.js -->
+  <nav id="barra-pagine" class="barra-pagine"></nav>
+
+  <!-- Menu laterale -->
+  <dialog id="dlg-menu" class="dlg-menu">
+    <nav class="menu">
+      <h2>Diario</h2>
+      <div id="menu-voci" class="menu-voci"></div>
+    </nav>
+  </dialog>
 
   <button id="btn-nuovo" class="fab" aria-label="Nuovo ricordo">+</button>
 
