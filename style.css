@@ -176,20 +176,28 @@ button { cursor: pointer; }
 .sezione .gruppo + .gruppo { border-top: 1px solid var(--bordo); padding-top: 12px; }
 .sezione .gruppo-testa h3 { color: var(--testo); font-size: 12px; opacity: 0.75; }
 /* Slider da 1 a 9: un pallino per numero */
-.slider-voce { display: flex; flex-direction: column; gap: 2px; }
-.slider-testa { display: flex; align-items: baseline; gap: 8px; min-height: 24px; }
-.slider-valore { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--colore); }
-.slider-togli { padding: 0 2px; color: var(--testo-tenue); }
-.slider { position: relative; height: 40px; touch-action: pan-y; cursor: pointer; --valore: 0; }
+/* Slider da 1 a 9 su una riga: nome, pallini, valore; sotto, piccole, le parole degli estremi */
+.slider-voce {
+  display: grid;
+  grid-template-columns: minmax(0, 30%) 1fr 28px;
+  align-items: center;
+  column-gap: 4px;
+}
+.slider-nome { display: flex; flex-direction: column; min-width: 0; font-size: 15px; line-height: 1.2; }
+.slider-parola { font-size: 12px; color: var(--testo-tenue); }
+.slider-parola:empty { display: none; }
+.slider-valore { text-align: right; font-size: 15px; font-weight: 600; color: var(--colore); }
+.slider-voce .scala-estremi { grid-column: 2; margin-top: -4px; font-size: 11px; }
+.slider { position: relative; height: 34px; touch-action: pan-y; cursor: pointer; --valore: 0; }
 .slider-linea {
   position: absolute;
   left: 14px;
   right: 14px;
   top: 50%;
-  height: 4px;
-  margin-top: -2px;
+  height: 3px;
+  margin-top: -1.5px;
   border-radius: 2px;
-  background: var(--bordo);
+  background: color-mix(in srgb, var(--testo) 18%, transparent);
 }
 .slider-linea::after {
   content: '';
@@ -205,25 +213,21 @@ button { cursor: pointer; }
   position: absolute;
   top: 50%;
   left: calc(14px + (100% - 28px) * var(--i) / 8);
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  box-sizing: border-box;
-  border: 2px solid var(--bordo);
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
   border-radius: 50%;
-  background: var(--carta);
+  background: color-mix(in srgb, var(--testo) 30%, var(--carta));
 }
-.slider-punto.normale { border-color: var(--testo-tenue); }
+.slider-punto.normale { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; }
 .slider-punto.attivo {
-  width: 26px;
-  height: 26px;
-  margin: -13px 0 0 -13px;
-  border-color: var(--colore);
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
   background: var(--colore);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 .slider.vuoto .slider-linea::after { display: none; }
-.slider.vuoto .slider-punto { opacity: 0.6; }
 .casella-numero {
   width: 84px;
   border: 1px solid var(--bordo);
@@ -237,7 +241,7 @@ button { cursor: pointer; }
 }
 .nota { margin: 0; font-size: 13px; font-style: italic; color: var(--testo-tenue); }
 /* Scale da 1 a 9 e conteggi: una voce per riga */
-.voci { display: flex; flex-direction: column; gap: 12px; }
+.voci { display: flex; flex-direction: column; gap: 10px; }
 .voce { display: flex; align-items: center; gap: 8px; }
 .voce-nome { flex: 1; font-size: 15px; }
 .voci .chip-aggiungi { align-self: flex-start; }

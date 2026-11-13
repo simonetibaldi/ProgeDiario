@@ -980,7 +980,9 @@ function disegnaGruppo(data, gruppo, scelte) {
   // Le scelte da chiuse stanno su una riga; slider e conteggi sono sempre aperti (li chiude la sezione).
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || !!gruppo.tipo;
   const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudi(gruppiAperti, gruppo.nome) });
-  const testa = el('div', { className: 'gruppo-testa' }, el('h3', { textContent: nomeMostrato(gruppo) }));
+  // Un gruppo con uno slider solo che si chiama come lui (Libido) non ripete il nome: basta la riga.
+  const soloSlider = !modificaGruppi && gruppo.tipo === 'scala' && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome;
+  const testa = soloSlider ? '' : el('div', { className: 'gruppo-testa' }, el('h3', { textContent: nomeMostrato(gruppo) }));
   if (!modificaGruppi && !gruppo.tipo) testa.append(freccia);
   const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte)
     : gruppo.tipo === 'conteggio' ? disegnaConteggi(data, gruppo, scelte)
@@ -1034,21 +1036,23 @@ function disegnaVociInModifica(gruppo) {
   );
 }
 
-// Uno slider da 1 a 9 con un pallino per ogni numero: si tocca un punto o si trascina.
+// Uno slider da 1 a 9 su una riga: il nome, un pallino per ogni numero, il valore.
+// Si tocca un punto o si trascina; toccare di nuovo il punto scelto lo toglie.
 // Finché non si tocca è spento: non segnato non vuol dire 5. Serve in Oggi e nei voti dell'archivio.
-//   parole: le 9 parole dei punti ('' dove non c'è)
-//   scegli(n): chiamata quando si lascia il dito su un numero diverso; togli(): per la ×
-//   apri(): se c'è, il valore non si cambia qui e toccare lo slider chiama apri
-function creaSlider({ nome = '', valore, parole, scegli, togli, apri, dopo = '' }) {
-  const etichetta = (n) => (n ? n + (parole[n - 1] ? ' · ' + parole[n - 1] : '') : '–') + dopo;
+//   parole: le 9 parole dei punti ('' dove non c'è): quella scelta compare sotto il nome
+//   scegli(n), togli(): chiamate quando si lascia il dito
+//   apri(): se c'è, il valore non si cambia qui (viene dall'archivio, da `da`) e toccare apre
+function creaSlider({ nome, valore, parole, scegli, togli, apri, da = '' }) {
   const scritta = el('span', { className: 'slider-valore' });
+  const dettaglio = el('span', { className: 'slider-parola' });
   const punti = SCALA.map((n) => el('span', { className: 'slider-punto' + (n === SCALA_NORMALE ? ' normale' : ''), style: `--i: ${n - 1}` }));
   const binario = el('div', { className: 'slider' }, el('span', { className: 'slider-linea' }), ...punti);
   const mostra = (n) => {
     punti.forEach((p, i) => p.classList.toggle('attivo', i + 1 === n));
     binario.classList.toggle('vuoto', !n);
     binario.style.setProperty('--valore', n ? n - 1 : 0);
-    scritta.textContent = etichetta(n);
+    scritta.textContent = (n || '–') + (apri ? ' ↗' : '');
+    dettaglio.textContent = apri ? 'da ' + da : (n && parole[n - 1]) || '';
   };
   mostra(valore);
 
@@ -1056,6 +1060,7 @@ function creaSlider({ nome = '', valore, parole, scegli, togli, apri, dopo = '' 
     binario.onclick = apri;
   } else {
     let scelto = null;
+    let mosso = false;
     const punto = (e) => {
       const r = binario.getBoundingClientRect();
       return Math.min(9, Math.max(1, Math.round(((e.clientX - r.left - 14) / (r.width - 28)) * 8) + 1));
@@ -1063,15 +1068,18 @@ function creaSlider({ nome = '', valore, parole, scegli, togli, apri, dopo = '' 
     binario.onpointerdown = (e) => {
       binario.setPointerCapture(e.pointerId);
       scelto = punto(e);
+      mosso = false;
       mostra(scelto);
     };
     binario.onpointermove = (e) => {
-      if (scelto === null) return;
+      if (scelto === null || punto(e) === scelto) return;
       scelto = punto(e);
+      mosso = true;
       mostra(scelto);
     };
     binario.onpointerup = () => {
-      if (scelto !== null && scelto !== valore) scegli(scelto);
+      if (scelto === valore && !mosso) togli();
+      else if (scelto !== null && scelto !== valore) scegli(scelto);
       scelto = null;
     };
     // Succede quando il dito scorre la pagina in verticale: non si sceglie niente.
@@ -1081,26 +1089,24 @@ function creaSlider({ nome = '', valore, parole, scegli, togli, apri, dopo = '' 
     };
   }
   return el('div', { className: 'slider-voce' },
-    el('div', { className: 'slider-testa' },
-      nome ? el('span', { className: 'voce-nome', textContent: nome }) : '',
-      scritta,
-      valore && !apri
-        ? el('button', { type: 'button', className: 'btn-testo slider-togli', textContent: '×', ariaLabel: 'Togli il valore', onclick: togli })
-        : ''),
+    el('div', { className: 'slider-nome' }, el('span', { textContent: nome }), dettaglio),
     binario,
-    el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[8] })));
+    scritta,
+    parole[0] || parole[8]
+      ? el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[8] }))
+      : '');
 }
 
-function disegnaSlider(data, gruppo, voce, valore, post, conNome) {
+function disegnaSlider(data, gruppo, voce, valore, post) {
   return creaSlider({
-    nome: conNome ? voce : '',
+    nome: voce,
     valore,
     parole: paroleDi(gruppo, voce),
     scegli: (n) => cambiaValori(data, gruppo, { [voce]: n }),
     togli: () => cambiaValori(data, gruppo, { [voce]: null }),
     // Il valore viene da una voce dell'archivio: si cambia da lì.
     apri: post ? () => apriModulo(post) : null,
-    dopo: post ? ' ↗ ' + post.raccolta : '',
+    da: post ? post.raccolta : '',
   });
 }
 
@@ -1135,14 +1141,12 @@ function disegnaScale(data, gruppo, scelte) {
   const voci = [...new Set([...gruppo.opzioni, ...Object.keys(valori)])];
   const slider = voci.filter((v) => !eNumero(gruppo, v));
   const vuoti = slider.filter((v) => !(v in valori));
-  // Un gruppo con uno slider solo che si chiama come lui non ripete il nome.
-  const conNome = !(voci.length === 1 && voci[0] === gruppo.nome);
   return el('div', { className: 'voci' },
     // Un gruppo appena diventato slider: nei giorni di prima resta cosa si era scelto.
     Array.isArray(segnato) && segnato.length ? el('p', { className: 'nota', textContent: 'Segnato prima: ' + segnato.join(', ') }) : '',
     ...voci.map((v) => (eNumero(gruppo, v)
       ? disegnaCasella(data, gruppo, v, valori[v])
-      : disegnaSlider(data, gruppo, v, valori[v], daArchivio.get(v), conNome))),
+      : disegnaSlider(data, gruppo, v, valori[v], daArchivio.get(v)))),
     vuoti.length && slider.length > 1
       ? el('button', {
         type: 'button',
