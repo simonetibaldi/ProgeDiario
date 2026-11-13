@@ -520,25 +520,36 @@ async function salvaModulo() {
 const GRUPPO_UMORE = 'Umore';
 // 5 è una giornata come al solito; 1 e 9 sono rari, tra le peggiori e le migliori.
 const SCALA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-// Ogni gruppo di voti ha la sua scala: `minimo`, `massimo` e `normale`, il numero che vuol dire
-// "come al solito" (la Libido da -1 a 2, normale 0). Senza, è da 1 a 9 con normale 5; un
-// gruppo che ha solo `massimo` (fatto quando le scale erano solo da 1 a 3, 5, 7, 9) ha il
-// normale in mezzo. Anche un oggetto qualsiasi con questi campi fa da scala (SCALA_BASE).
-const SCALA_BASE = { minimo: 1, massimo: 9, normale: 5 };
+// Ogni gruppo di voti ha la sua scala: `minimo` e `massimo` (da 1 a 9 se non ci sono) e, se
+// lo si sceglie, `normale`, il numero che vuol dire "come al solito" (la Libido da -1 a 2,
+// normale 0). Senza normale la scala è dritta: il minimo vale 1, il massimo 9 e il resto in
+// proporzione (da 1 a 4: 1 → 1, 2 → 3,7, 3 → 6,3, 4 → 9); "come al solito" è il numero di
+// mezzo, se c'è (sulle scale pari no). Anche un oggetto con questi campi fa da scala (SCALA_BASE).
+const SCALA_BASE = { minimo: 1, massimo: 9 };
 const CASELLE_MAX = 11; // quante caselle stanno in una riga del telefono
 const minimoDi = (scala) => scala.minimo ?? 1;
 const massimoDi = (scala) => scala.massimo ?? 9;
-const normaleDi = (scala) => scala.normale ?? Math.round((minimoDi(scala) + massimoDi(scala)) / 2);
+const conNormale = (scala) => scala.normale !== undefined && scala.normale !== null;
+// undefined se la scala non ce l'ha
+function normaleDi(scala) {
+  if (conNormale(scala)) return scala.normale;
+  const mezzo = (minimoDi(scala) + massimoDi(scala)) / 2;
+  return Number.isInteger(mezzo) ? mezzo : undefined;
+}
 const scalaDi = (scala) => Array.from({ length: massimoDi(scala) - minimoDi(scala) + 1 }, (_, i) => minimoDi(scala) + i);
 const eScalaBase = (scala) => minimoDi(scala) === 1 && massimoDi(scala) === 9 && normaleDi(scala) === 5;
 // "−1", "+2" sulle scale che vanno sotto lo zero; altrimenti il numero com'è.
 const scriviSuScala = (n, scala) => (minimoDi(scala) < 0 && n > 0 ? '+' : '') + numeroLeggibile(Math.round(n * 10) / 10).replace('-', '−');
-const descriviScala = (scala) => `da ${scriviSuScala(minimoDi(scala), scala)} a ${scriviSuScala(massimoDi(scala), scala)}, normale ${scriviSuScala(normaleDi(scala), scala)}`;
+const descriviScala = (scala) => `da ${scriviSuScala(minimoDi(scala), scala)} a ${scriviSuScala(massimoDi(scala), scala)}`
+  + (conNormale(scala) ? `, normale ${scriviSuScala(scala.normale, scala)}` : '');
 
-// Un voto riportato da 1 a 9, per benessere e colori: il minimo vale 1, il normale 5, il
-// massimo 9, e in mezzo in proporzione da ciascuna parte (Libido: -1 → 1, 0 → 5, 1 → 7, 2 → 9).
+// Un voto riportato da 1 a 9, per benessere e colori: il minimo vale 1 e il massimo 9. Con un
+// normale scelto, quello vale 5 e il resto va in proporzione da ciascuna parte (Libido: -1 → 1,
+// 0 → 5, 1 → 7, 2 → 9); senza, in proporzione su tutta la scala.
 function suNove(n, scala) {
-  const [min, normale, max] = [minimoDi(scala), normaleDi(scala), massimoDi(scala)];
+  const [min, max] = [minimoDi(scala), massimoDi(scala)];
+  if (!conNormale(scala)) return Math.min(9, Math.max(1, 1 + ((n - min) * 8) / (max - min)));
+  const normale = scala.normale;
   const v = n <= normale
     ? (normale === min ? 5 : 1 + ((n - min) * 4) / (normale - min))
     : (normale === max ? 5 : 5 + ((n - normale) * 4) / (max - normale));
@@ -546,8 +557,10 @@ function suNove(n, scala) {
 }
 // Al contrario: da 1–9 a un numero intero della scala (per i voti dell'archivio e per cambiare scala).
 function daNove(v, scala) {
-  const [min, normale, max] = [minimoDi(scala), normaleDi(scala), massimoDi(scala)];
-  const n = v <= 5 ? min + ((v - 1) * (normale - min)) / 4 : normale + ((v - 5) * (max - normale)) / 4;
+  const [min, max] = [minimoDi(scala), massimoDi(scala)];
+  let n;
+  if (!conNormale(scala)) n = min + ((v - 1) * (max - min)) / 8;
+  else n = v <= 5 ? min + ((v - 1) * (scala.normale - min)) / 4 : scala.normale + ((v - 5) * (max - scala.normale)) / 4;
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 const GRUPPI_DI_BASE = [
@@ -973,17 +986,17 @@ function converti(nomeGruppo, tipo) {
 // il cambio arriva anche al Drive. Delle parole dei punti restano quelle degli estremi.
 async function cambiaScala(nomeGruppo) {
   const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
-  const attuale = [minimoDi(gruppo), massimoDi(gruppo), normaleDi(gruppo)].join(', ');
-  const scritta = prompt(`Scala di ${nomeGruppo}: da, a, normale (il numero che vuol dire "come al solito"). Per esempio: 1, 9, 5 oppure -1, 2, 0`, attuale);
+  const attuale = [minimoDi(gruppo), massimoDi(gruppo), ...(conNormale(gruppo) ? [gruppo.normale] : [])].join(', ');
+  const scritta = prompt(`Scala di ${nomeGruppo}: da, a e, se vuoi, il normale (il numero che vuol dire "come al solito"). Per esempio: 1, 4 oppure -1, 2, 0`, attuale);
   if (scritta === null) return;
   const numeri = scritta.replace(/−/g, '-').split(/[,;\s]+/).filter(Boolean).map(Number);
-  const [minimo, massimo, normale = Math.round((minimo + massimo) / 2)] = numeri;
-  if (numeri.length < 2 || numeri.length > 3 || !numeri.every(Number.isInteger)
-    || minimo >= massimo || normale < minimo || normale > massimo || massimo - minimo + 1 > CASELLE_MAX) {
-    alert(`Scrivi due o tre numeri interi: da, a e normale, con "da" più piccolo di "a", il normale in mezzo e al massimo ${CASELLE_MAX} numeri in tutto.`);
+  const [minimo, massimo, normale] = numeri;
+  if (numeri.length < 2 || numeri.length > 3 || !numeri.every(Number.isInteger) || minimo >= massimo
+    || (normale !== undefined && (normale < minimo || normale > massimo)) || massimo - minimo + 1 > CASELLE_MAX) {
+    alert(`Scrivi due o tre numeri interi: da, a e se vuoi il normale, con "da" più piccolo di "a", il normale in mezzo e al massimo ${CASELLE_MAX} numeri in tutto.`);
     return;
   }
-  const dopo = { ...gruppo, minimo, massimo, normale };
+  const dopo = { ...gruppo, minimo, massimo, normale: normale ?? null };
   if (descriviScala(dopo) === descriviScala(gruppo)) return;
   const eVoto = (voce) => !eNumero(gruppo, voce);
   const giorni = giornate.filter((g) => {
@@ -991,7 +1004,7 @@ async function cambiaScala(nomeGruppo) {
     return v && !Array.isArray(v) && Object.keys(v).some(eVoto);
   });
   const converti = (n) => daNove(suNove(n, gruppo), dopo);
-  const esempi = [...new Set([minimoDi(gruppo), normaleDi(gruppo), massimoDi(gruppo)])]
+  const esempi = [...new Set([minimoDi(gruppo), normaleDi(gruppo), massimoDi(gruppo)])].filter((n) => n !== undefined)
     .map((n) => `${scriviSuScala(n, gruppo)} diventa ${scriviSuScala(converti(n), dopo)}`).join(', ');
   if (giorni.length && !confirm(`${nomeGruppo} passa alla scala ${descriviScala(dopo)}. I voti già segnati (${giorni.length === 1 ? '1 giorno' : giorni.length + ' giorni'}) vengono convertiti in proporzione: ${esempi}. Se vuoi poter tornare indietro, fai prima un backup.`)) return;
   const parole = Object.fromEntries(gruppo.opzioni.filter(eVoto).map((voce) => {
@@ -999,7 +1012,7 @@ async function cambiaScala(nomeGruppo) {
     const quante = scalaDi(dopo).length;
     return [voce, Array.from({ length: quante }, (_, i) => (i === 0 ? vecchie[0] : i === quante - 1 ? vecchie[vecchie.length - 1] : ''))];
   }));
-  cambiaGruppo(nomeGruppo, (g) => ({ ...g, minimo, massimo, normale, parole: { ...g.parole, ...parole } }));
+  cambiaGruppo(nomeGruppo, (g) => ({ ...g, minimo, massimo, normale: normale ?? null, parole: { ...g.parole, ...parole } }));
   const adesso = Date.now();
   for (const g of giorni) {
     const valori = Object.fromEntries(Object.entries(g.scelte[nomeGruppo])
@@ -1181,7 +1194,7 @@ function creaVoto({ nome, valore, parole, scegli, togli, apri, da = '', scala = 
       : el('span'),
     el('div', { className: 'voto-caselle', style: `--caselle: ${numeri.length}` }, ...numeri.map((n) => el('button', {
       type: 'button',
-      className: 'voto-casella tinta' + (n === valore ? ' scelta' : '') + (n === normaleDi(scala) && !eScalaBase(scala) ? ' normale' : ''),
+      className: 'voto-casella tinta' + (n === valore ? ' scelta' : '') + (conNormale(scala) && n === scala.normale ? ' normale' : ''),
       style: `--n: ${suNove(n, scala)}`,
       textContent: scriviSuScala(n, scala),
       ariaLabel: `${nome}: ${n}`,
@@ -1243,7 +1256,7 @@ function disegnaScale(data, gruppo, scelte) {
     ...voci.map((v) => (eNumero(gruppo, v)
       ? disegnaCasella(data, gruppo, v, valori[v])
       : disegnaVoto(data, gruppo, v, valori[v], daArchivio.get(v)))),
-    vuoti.length && voti.length > 1
+    vuoti.length && voti.length > 1 && normaleDi(gruppo) !== undefined
       ? el('button', {
         type: 'button',
         className: 'btn-secondario btn-come-al-solito',
