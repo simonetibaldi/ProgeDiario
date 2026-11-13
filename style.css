@@ -915,3 +915,33 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .peso { display: flex; align-items: center; gap: 10px; }
 .peso-scelte { display: flex; gap: 4px; }
 .peso-scelte .chip { min-width: 34px; padding: 4px 0; text-align: center; }
+
+/* PIN: finché non si sa se serve la pagina è nascosta; poi il tastierino copre tutto */
+
+.in-apertura > :not(.blocco) { visibility: hidden; }
+.blocco {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: var(--sfondo);
+  padding: 24px;
+}
+.blocco h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 30px; font-weight: 600; }
+.blocco-pallini { display: flex; gap: 16px; }
+.blocco-pallini span { width: 14px; height: 14px; border: 2px solid var(--testo); border-radius: 50%; }
+.blocco-pallini span.pieno { background: var(--testo); }
+.blocco-pallini.sbagliato span { border-color: var(--pericolo); background: var(--pericolo); }
+.blocco-tasti { display: grid; grid-template-columns: repeat(3, 72px); gap: 14px; }
+.blocco-tasti button {
+  height: 72px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--chip);
+  font-size: 26px;
+}
+.blocco-tasti button:active { background: var(--bordo); }

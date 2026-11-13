@@ -1569,12 +1569,96 @@ function cambiaPeso(gruppo, voce, peso) {
   salvaImpostazioni({ pesi });
 }
 
+// ---------------------------------------------------------------------------
+// PIN
+//
+// Un codice di 4 cifre chiesto all'apertura del diario. È una serratura, non una cassaforte:
+// i ricordi nel browser e sul Drive non sono cifrati. Il PIN non è mai salvato com'è: nelle
+// impostazioni (che viaggiano col Drive, così vale su tutti i dispositivi) c'è solo la sua
+// impronta, cioè SHA-256 di sale + PIN. Se lo si dimentica, dalla console del browser:
+// salvaImpostazioni({ pin: null }) e poi si ricarica la pagina.
+// ---------------------------------------------------------------------------
+
+const CIFRE_PIN = 4;
+let pinScritto = '';
+
+async function improntaDi(sale, pin) {
+  const byte = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sale + ':' + pin));
+  return [...new Uint8Array(byte)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// crypto.subtle esiste solo su HTTPS e su localhost: altrove (192.168…) niente PIN.
+const pinAttivo = () => !!(impostazioniGruppi && impostazioniGruppi.pin && window.crypto && crypto.subtle);
+
+async function scegliPin() {
+  const primo = prompt(`Nuovo PIN (${CIFRE_PIN} cifre)`);
+  if (primo === null) return;
+  if (!new RegExp(`^\\d{${CIFRE_PIN}}$`).test(primo.trim())) {
+    alert(`Il PIN deve essere di ${CIFRE_PIN} cifre.`);
+    return;
+  }
+  if (prompt('Scrivilo di nuovo') !== primo) {
+    alert('I due PIN non sono uguali: non è cambiato niente.');
+    return;
+  }
+  const sale = nuovoId();
+  salvaImpostazioni({ pin: { sale, impronta: await improntaDi(sale, primo.trim()) } });
+}
+
+function togliPin() {
+  if (confirm('Togliere il PIN? Il diario si aprirà senza chiederlo, su tutti i dispositivi.')) salvaImpostazioni({ pin: null });
+}
+
+// La schermata col tastierino, sopra a tutto, finché non si scrive il PIN giusto.
+function mostraBlocco() {
+  pinScritto = '';
+  const pallini = el('div', { className: 'blocco-pallini' });
+  const disegnaPallini = () => pallini.replaceChildren(...Array.from({ length: CIFRE_PIN }, (_, i) => el('span', { className: i < pinScritto.length ? 'pieno' : '' })));
+  const premi = async (tasto) => {
+    if (tasto === '⌫') pinScritto = pinScritto.slice(0, -1);
+    else if (pinScritto.length < CIFRE_PIN) pinScritto += tasto;
+    disegnaPallini();
+    if (pinScritto.length < CIFRE_PIN) return;
+    const { sale, impronta } = impostazioniGruppi.pin;
+    if (await improntaDi(sale, pinScritto) === impronta) {
+      $('blocco').hidden = true;
+      document.removeEventListener('keydown', tastiera);
+      return;
+    }
+    pallini.classList.add('sbagliato');
+    setTimeout(() => { pallini.classList.remove('sbagliato'); pinScritto = ''; disegnaPallini(); }, 500);
+  };
+  // Dal Mac si può scrivere anche con la tastiera.
+  const tastiera = (e) => {
+    if (/^\d$/.test(e.key)) premi(e.key);
+    else if (e.key === 'Backspace') premi('⌫');
+  };
+  document.addEventListener('keydown', tastiera);
+  disegnaPallini();
+  $('blocco').replaceChildren(
+    el('h2', { textContent: 'Diario' }),
+    pallini,
+    el('div', { className: 'blocco-tasti' },
+      ...['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((t) => (t
+        ? el('button', { type: 'button', textContent: t, ariaLabel: t === '⌫' ? 'Cancella' : t, onclick: () => premi(t) })
+        : el('span')))));
+  $('blocco').hidden = false;
+}
+
 function disegnaImpostazioni() {
   const ieri = giornoPrima(oggi());
   const benessereIeri = benessereDi(riassuntoDelGiorno(ieri));
   const gruppiDiVoti = gruppiAttuali().filter((g) => g.tipo === 'scala' && g.opzioni.some((v) => !eNumero(g, v)));
   $('pagina-impostazioni').replaceChildren(
     el('h2', { className: 'impostazioni-titolo', textContent: 'Impostazioni' }),
+    el('section', { className: 'impostazione' },
+      el('h3', { textContent: '🔒 PIN' }),
+      el('p', { className: 'nota', textContent: pinAttivo()
+        ? `Il diario chiede il PIN quando si apre, su tutti i dispositivi.`
+        : `Senza PIN il diario si apre subito. Con il PIN chiede ${CIFRE_PIN} cifre all'apertura, su tutti i dispositivi.` }),
+      el('div', { className: 'chips' },
+        el('button', { type: 'button', className: 'btn-secondario', textContent: pinAttivo() ? 'Cambia PIN' : 'Scegli un PIN', onclick: () => scegliPin().catch(mostraErrore) }),
+        pinAttivo() ? el('button', { type: 'button', className: 'btn-secondario', textContent: 'Togli PIN', onclick: togliPin }) : '')),
     el('section', { className: 'impostazione' },
       el('h3', { textContent: '✨ Calcolo del benessere' }),
       el('p', { className: 'nota', textContent: 'Il benessere di un giorno è la media dei voti da 1 a 9 segnati quel giorno. Qui scegli quanto conta ognuno: 0 non conta, 1 normale, 2 il doppio, 3 il triplo.' }),
@@ -2450,4 +2534,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 disegnaMenu();
 mostraPagina('home');
-ricarica().catch(mostraErrore);
+// Finché non si sa se c'è un PIN la pagina resta nascosta (classe in-apertura, in index.html).
+ricarica()
+  .then(() => { if (pinAttivo()) mostraBlocco(); })
+  .catch(mostraErrore)
+  .finally(() => document.body.classList.remove('in-apertura'));
