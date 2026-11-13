@@ -145,27 +145,102 @@ button { cursor: pointer; }
 .gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--colore); text-transform: uppercase; letter-spacing: 0.04em; }
 .gruppo-freccia { padding: 0 6px; color: var(--colore); }
 .chip-aggiungi { min-width: 36px; }
-.gruppo-comandi { display: flex; gap: 4px; }
+.gruppo-comandi { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-bottom: 10px; }
+.gruppo-comandi select {
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--carta);
+  color: var(--testo);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 14px;
+}
+/* Sezioni: riquadri colorati che contengono i gruppi */
+.sezione {
+  border: 1px solid var(--bordo);
+  border-left: 4px solid var(--colore);
+  border-radius: var(--raggio);
+  background: var(--carta);
+  background: color-mix(in srgb, var(--colore) 7%, var(--carta));
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sezione.chiusa { gap: 4px; cursor: pointer; }
+.sezione-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sezione-testa h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--colore); text-transform: uppercase; letter-spacing: 0.04em; }
+.sezione-riassunto { margin: 0; font-size: 14px; color: var(--testo-tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Dentro una sezione i gruppi sono righe separate da una linea */
+.sezione .gruppo { border: 0; border-radius: 0; background: none; padding: 0; }
+.sezione .gruppo + .gruppo { border-top: 1px solid var(--bordo); padding-top: 12px; }
+.sezione .gruppo-testa h3 { color: var(--testo); font-size: 12px; opacity: 0.75; }
+/* Slider da 1 a 9: un pallino per numero */
+.slider-voce { display: flex; flex-direction: column; gap: 2px; }
+.slider-testa { display: flex; align-items: baseline; gap: 8px; min-height: 24px; }
+.slider-valore { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--colore); }
+.slider-togli { padding: 0 2px; color: var(--testo-tenue); }
+.slider { position: relative; height: 40px; touch-action: pan-y; cursor: pointer; --valore: 0; }
+.slider-linea {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--bordo);
+}
+.slider-linea::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(100% * var(--valore) / 8);
+  border-radius: 2px;
+  background: var(--colore);
+}
+.slider-punto {
+  position: absolute;
+  top: 50%;
+  left: calc(14px + (100% - 28px) * var(--i) / 8);
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  box-sizing: border-box;
+  border: 2px solid var(--bordo);
+  border-radius: 50%;
+  background: var(--carta);
+}
+.slider-punto.normale { border-color: var(--testo-tenue); }
+.slider-punto.attivo {
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-color: var(--colore);
+  background: var(--colore);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.slider.vuoto .slider-linea::after { display: none; }
+.slider.vuoto .slider-punto { opacity: 0.6; }
+.casella-numero {
+  width: 84px;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--carta);
+  color: var(--testo);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 16px; /* sotto i 16px l'iPhone ingrandisce la pagina quando si scrive */
+  text-align: right;
+}
+.nota { margin: 0; font-size: 13px; font-style: italic; color: var(--testo-tenue); }
 /* Scale da 1 a 9 e conteggi: una voce per riga */
 .voci { display: flex; flex-direction: column; gap: 12px; }
 .voce { display: flex; align-items: center; gap: 8px; }
 .voce-nome { flex: 1; font-size: 15px; }
 .voci .chip-aggiungi { align-self: flex-start; }
-.scala .voce-nome { margin-bottom: 6px; }
-.scala-numeri { display: flex; gap: 4px; }
-.scala-numero {
-  flex: 1;
-  min-width: 0;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--bordo);
-  border-radius: 8px;
-  background: var(--carta);
-  color: var(--testo);
-  font-size: 15px;
-}
-.scala-numero.normale { border-color: var(--colore); }
-.scala-numero.attivo { background: var(--colore); border-color: var(--colore); color: var(--accento-testo); font-weight: 600; }
 .scala-estremi { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; font-size: 12px; color: var(--testo-tenue); }
 .scala-estremi span:last-child { text-align: right; }
 .btn-come-al-solito { align-self: flex-start; font-size: 14px; }

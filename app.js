@@ -352,16 +352,11 @@ function disegnaRaccoltaModulo() {
   const raccolta = raccoltaChiamata(formRaccolta);
   $('campi-raccolta').replaceChildren(...(raccolta ? raccolta.campi : []).map((campo) => {
     if (campo.tipo === 'voto') {
-      return el('label', {}, campo.nome,
-        el('div', { className: 'scala-numeri' }, ...SCALA.map((n) => el('button', {
-          type: 'button',
-          className: 'scala-numero' + (formCampi[campo.nome] === n ? ' attivo' : ''),
-          textContent: n,
-          onclick: () => {
-            formCampi[campo.nome] = formCampi[campo.nome] === n ? undefined : n;
-            disegnaRaccoltaModulo();
-          },
-        }))));
+      const cambia = (n) => {
+        formCampi[campo.nome] = n;
+        disegnaRaccoltaModulo();
+      };
+      return creaSlider({ nome: campo.nome, valore: formCampi[campo.nome], parole: SCALA.map(() => ''), scegli: cambia, togli: () => cambia(undefined) });
     }
     return el('label', {}, campo.nome, el('input', {
       type: campo.tipo === 'data' ? 'date' : 'text',
@@ -441,7 +436,7 @@ function aggiungiTag(grezzo) {
 
 // Umori già pronti: all'inizio il gruppo Umore di Oggi ha questi. Quel gruppo e l'umore dei
 // ricordi sono la stessa cosa: un umore nuovo scritto in un ricordo entra nel gruppo.
-const UMORI_DI_BASE = ['Felice', 'Sereno', 'Entusiasta', 'Grato', 'Innamorato', 'Nostalgico', 'Stanco', 'Annoiato', 'Ansioso', 'Triste', 'Arrabbiato'];
+const UMORI_DI_BASE = ['Felice', 'Sereno', 'Entusiasta', 'Grato', 'Innamorato', 'Nostalgico', 'Annoiato', 'Ansioso', 'Triste', 'Arrabbiato'];
 
 // Gli umori dei ricordi, dal più usato
 function umoriUsati() {
@@ -450,10 +445,11 @@ function umoriUsati() {
   return [...conteggio.keys()].sort((a, b) => conteggio.get(b) - conteggio.get(a));
 }
 
-// Gli umori da proporre in un ricordo: prima quelli usati, poi le altre opzioni del gruppo
+// Gli umori da proporre in un ricordo: le opzioni del gruppo Umore. Un umore tolto dal gruppo
+// resta nei ricordi che lo hanno, ma non si propone più. Senza gruppo, quelli già usati.
 function tuttiGliUmori() {
   const gruppo = gruppiAttuali().find((g) => g.nome === GRUPPO_UMORE);
-  return [...new Set([...umoriUsati(), ...(gruppo ? gruppo.opzioni : [])])];
+  return gruppo ? gruppo.opzioni : umoriUsati();
 }
 
 // Un umore solo per ricordo: toccarne un altro lo sostituisce, toccare quello scelto lo toglie.
@@ -527,7 +523,6 @@ const SCALA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const SCALA_NORMALE = 5;
 const GRUPPI_DI_BASE = [
   { nome: GRUPPO_UMORE, opzioni: UMORI_DI_BASE },
-  { nome: 'Dormito', opzioni: ['Bene', 'Male'] },
   { nome: 'Attività fisica', opzioni: ['Niente', 'Palestra', 'Calisthenics'] },
   { nome: 'Hobby', opzioni: ['Musical', 'Uncinetto', 'Tromba', 'Leggere'] },
   {
@@ -544,17 +539,46 @@ const GRUPPI_DI_BASE = [
       Realizzazione: ['Non ho combinato niente', 'Ho fatto qualcosa che conta'],
     },
   },
+  // Le ore sono un numero da scrivere; il riposo è come ci si sente al risveglio.
+  {
+    nome: 'Sonno',
+    tipo: 'scala',
+    opzioni: ['Ore dormite', 'Riposo'],
+    numeri: ['Ore dormite'],
+    estremi: { Riposo: ['Distrutto', 'Riposatissimo'] },
+  },
 ];
 // I gruppi di base arrivati quando qualcuno aveva già i suoi: gli compaiono in fondo,
 // e se li toglie non tornano, perché salvaGruppi li segna in `offerti`.
-const GRUPPI_AGGIUNTI_DOPO = ['Come sto'];
+const GRUPPI_AGGIUNTI_DOPO = ['Come sto', 'Sonno'];
+
+// I gruppi stanno in sezioni, ognuna un riquadro. Quelle di chi usa il diario sono nelle
+// impostazioni (`sezioni`), e ogni gruppo ha la sua in `sezione`.
+const SEZIONI_DI_BASE = ['Salute mentale', 'Salute fisica', 'Attività'];
+const SEZIONE_ALTRO = 'Altro'; // in fondo, per i gruppi senza sezione
+const sezioniAttuali = () => (impostazioniGruppi && impostazioniGruppi.sezioni) || SEZIONI_DI_BASE;
+
+// La sezione scelta dall'app; per i gruppi mai spostati, una pensata a partire dal tipo.
+function sezioneDi(gruppo) {
+  const sezioni = sezioniAttuali();
+  if (sezioni.includes(gruppo.sezione)) return gruppo.sezione;
+  const proposta = gruppo.nome === GRUPPO_UMORE || (gruppo.tipo === 'scala' && gruppo.nome !== 'Sonno') ? 'Salute mentale'
+    : gruppo.tipo === 'conteggio' || ['Sonno', 'Dormito', 'Attività fisica'].includes(gruppo.nome) ? 'Salute fisica'
+    : gruppo.nome === 'Hobby' ? 'Attività'
+    : SEZIONE_ALTRO;
+  return sezioni.includes(proposta) ? proposta : SEZIONE_ALTRO;
+}
+
+// Il gruppo Umore si chiama così nei dati (ci sono legati i ricordi), ma si mostra così.
+const nomeMostrato = (gruppo) => (gruppo.nome === GRUPPO_UMORE ? 'Umore generale' : gruppo.nome);
 const ID_GRUPPI = 'impostazioni-gruppi';
 const PAUSA_PRIMA_DI_SINCRONIZZARE = 2000;
 
 let giornoMostrato = null; // la data mostrata nella pagina Oggi; null vuol dire oggi
 let modificaGruppi = false; // true mentre si tolgono gruppi e opzioni
 const gruppiAperti = new Set(); // i gruppi che mostrano tutte le opzioni invece di una riga sola
-const COLORI_GRUPPI = 6; // quanti colori ci sono in style.css (.colore-0, .colore-1...)
+const sezioniAperte = new Set(); // le sezioni aperte; le altre mostrano una riga di riassunto
+const COLORI_GRUPPI = 6; // quanti colori ci sono in style.css (.colore-0, .colore-1...), uno per sezione
 let codaSalvataggi = Promise.resolve(); // i tocchi si salvano uno alla volta, nell'ordine
 let attesaSincronizzazione = null;
 
@@ -582,6 +606,7 @@ function gruppoChiamato(nome, segnato) {
 
 // I valori di un gruppo a scala o a conteggio in un giorno: { opzione: numero }.
 // Un gruppo diventato conteggio ha i giorni segnati quando era a scelte: lì vale 1.
+// Uno diventato slider lì non ha valori (le parole di prima le mostra disegnaScale).
 function valoriDi(gruppo, segnato) {
   if (Array.isArray(segnato)) return segnato.length && gruppo.tipo === 'conteggio' ? { [gruppo.nome]: 1 } : {};
   return segnato || {};
@@ -682,10 +707,12 @@ function scelteDelGiorno(data) {
 function testoScelte(scelte) {
   return Object.entries(scelte).map(([nome, segnato]) => {
     const gruppo = gruppoChiamato(nome, segnato);
-    if (!gruppo.tipo) return `${nome}: ${segnato.join(', ')}`;
+    const titolo = nomeMostrato(gruppo);
+    // Uno slider appena convertito mostra le parole scelte prima (vedi disegnaScale).
+    if (!gruppo.tipo || (Array.isArray(segnato) && gruppo.tipo === 'scala')) return `${titolo}: ${segnato.join(', ')}`;
     const valori = Object.entries(valoriDi(gruppo, segnato));
-    if (valori.length === 1 && valori[0][0] === nome) return `${nome}: ${numeroLeggibile(valori[0][1])}`;
-    return `${nome}: ${valori.map(([voce, n]) => `${voce} ${numeroLeggibile(n)}`).join(', ')}`;
+    if (valori.length === 1 && valori[0][0] === nome) return `${titolo}: ${numeroLeggibile(valori[0][1])}`;
+    return `${titolo}: ${valori.map(([voce, n]) => `${voce} ${numeroLeggibile(n)}`).join(', ')}`;
   }).join(' · ');
 }
 
@@ -797,7 +824,7 @@ function aggiungiOpzione(data, nomeGruppo) {
 
 // tipo: undefined (a scelte), 'scala' o 'conteggio'
 function nuovoGruppo(tipo) {
-  const nome = chiediNome(tipo === 'scala' ? 'Nome del nuovo gruppo di scale' : tipo === 'conteggio' ? 'Cosa vuoi contare?' : 'Nome del nuovo gruppo');
+  const nome = chiediNome(tipo === 'scala' ? 'Nome del nuovo gruppo di slider' : tipo === 'conteggio' ? 'Cosa vuoi contare?' : 'Nome del nuovo gruppo');
   if (!nome) return;
   if (gruppiAttuali().some((g) => stessoNome(g.nome, nome))) {
     alert(`Il gruppo ${nome} esiste già.`);
@@ -820,29 +847,78 @@ function nuovoGruppo(tipo) {
   salvaGruppi([...gruppiAttuali(), tipo ? { nome, tipo, opzioni, estremi: {} } : { nome, opzioni }]);
 }
 
-// Una scala o una cosa da contare in più, in un gruppo che c'è già.
-function aggiungiVoce(gruppo) {
-  const nome = chiediNome(gruppo.tipo === 'scala' ? `Cosa misurare in ${gruppo.nome}?` : `Cos'altro contare in ${gruppo.nome}?`);
+// Una voce in più in un gruppo di slider o di conteggi. In un gruppo di slider può essere
+// uno slider da 1 a 9 o una casella dove scrivere un numero (ore dormite...).
+function aggiungiVoce(gruppo, numero = false) {
+  const domanda = gruppo.tipo === 'conteggio' ? `Cos'altro contare in ${gruppo.nome}?`
+    : numero ? `Che numero scrivere in ${gruppo.nome}? (per esempio Ore dormite)` : `Cosa misurare in ${gruppo.nome}?`;
+  const nome = chiediNome(domanda);
   if (!nome || gruppo.opzioni.some((o) => stessoNome(o, nome))) return;
-  cambiaGruppo(gruppo.nome, (g) => ({ ...g, opzioni: [...g.opzioni, nome] }));
-  if (gruppo.tipo === 'scala') cambiaEstremi(gruppo.nome, nome);
+  cambiaGruppo(gruppo.nome, (g) => ({ ...g, opzioni: [...g.opzioni, nome], ...(numero ? { numeri: [...(g.numeri || []), nome] } : {}) }));
+  if (gruppo.tipo === 'scala' && !numero) cambiaParole(gruppo.nome, nome);
 }
 
-function cambiaEstremi(nomeGruppo, voce) {
+const eNumero = (gruppo, voce) => (gruppo.numeri || []).includes(voce);
+
+// Le parole dei 9 punti di uno slider ('' dove non c'è). I gruppi fatti prima delle parole
+// avevano solo `estremi`, cioè le parole di 1 e di 9.
+function paroleDi(gruppo, voce) {
+  const parole = (gruppo.parole || {})[voce];
+  if (parole) return SCALA.map((n) => parole[n - 1] || '');
+  const [basso, alto] = (gruppo.estremi || {})[voce] || [];
+  return SCALA.map((n) => (n === 1 ? basso || '' : n === 9 ? alto || '' : ''));
+}
+
+// Si scrivono tutte insieme separate da /, dove i punti senza parola restano vuoti:
+// "Distrutto / / / / Normale / / / / Riposatissimo". Con due parole sole sono 1 e 9.
+function cambiaParole(nomeGruppo, voce) {
   const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
-  const [basso, alto] = (gruppo.estremi || {})[voce] || ['', ''];
-  const nuovoBasso = prompt(`${voce}: cosa vuol dire 1?`, basso);
-  if (nuovoBasso === null) return;
-  const nuovoAlto = prompt(`${voce}: cosa vuol dire 9?`, alto);
-  if (nuovoAlto === null) return;
-  cambiaGruppo(nomeGruppo, (g) => ({ ...g, estremi: { ...g.estremi, [voce]: [nuovoBasso.trim(), nuovoAlto.trim()] } }));
+  const scritte = prompt(`${voce}: le parole per 1, 2… 9, separate da /. Con due parole sole valgono per 1 e 9.`, paroleDi(gruppo, voce).join(' / '));
+  if (scritte === null) return;
+  let pezzi = scritte.split('/').map((p) => p.trim());
+  if (pezzi.length === 2) pezzi = [pezzi[0], '', '', '', '', '', '', '', pezzi[1]];
+  const parole = SCALA.map((n) => pezzi[n - 1] || '');
+  cambiaGruppo(nomeGruppo, (g) => ({ ...g, parole: { ...g.parole, [voce]: parole } }));
 }
 
-// Un gruppo a scelte diventa un conteggio col suo nome: nei giorni già segnati vale 1
-// (vedi valoriDi), e i giorni non vengono riscritti finché non si cambiano.
-function diventaConteggio(nomeGruppo) {
-  if (!confirm(`${nomeGruppo} diventa un numero da contare. Le sue opzioni spariscono e nei giorni già segnati vale 1, da correggere a mano.`)) return;
-  cambiaGruppo(nomeGruppo, (g) => ({ nome: g.nome, tipo: 'conteggio', opzioni: [g.nome] }));
+// Un gruppo a scelte diventa uno slider o un conteggio col suo nome. I giorni già segnati non
+// vengono riscritti: in un conteggio valgono 1, in uno slider resta scritto cosa si era scelto.
+function converti(nomeGruppo, tipo) {
+  const avviso = tipo === 'conteggio'
+    ? `${nomeGruppo} diventa un numero da contare. Le sue opzioni spariscono e nei giorni già segnati vale 1, da correggere a mano.`
+    : `${nomeGruppo} diventa uno slider da 1 a 9. Le sue opzioni spariscono; nei giorni già segnati resta scritto cosa avevi scelto, finché non sposti lo slider.`;
+  if (!confirm(avviso)) return;
+  cambiaGruppo(nomeGruppo, (g) => ({ nome: g.nome, tipo, opzioni: [g.nome], ...(g.sezione ? { sezione: g.sezione } : {}) }));
+}
+
+// Più opzioni diventano una sola: nel gruppo, nei giorni segnati e nei ricordi (umore e tag).
+// Giorni e ricordi vengono riscritti, così il cambio arriva anche al Drive.
+async function unisciOpzioni(nomeGruppo) {
+  const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
+  const scritte = (prompt(`Quali opzioni di ${nomeGruppo} vuoi unire? Scrivile separate da virgole`) || '').split(',').map((o) => o.trim()).filter(Boolean);
+  if (!scritte.length) return;
+  const unite = gruppo.opzioni.filter((o) => scritte.some((s) => stessoNome(s, o)));
+  if (unite.length < 2) {
+    alert('Servono almeno due opzioni del gruppo.');
+    return;
+  }
+  const scritto = (prompt(`Con quale nome restano ${unite.join(', ')}?`, unite[0]) || '').trim().replace(/\s+/g, ' ');
+  if (!scritto) return;
+  const nome = maiuscolaIniziale(scritto);
+  const unita = (t) => unite.some((o) => stessoNome(o, t));
+  const sostituisci = (elenco) => [...new Set(elenco.map((t) => (unita(t) ? nome : t)))];
+  const giorni = giornate.filter((g) => Array.isArray(g.scelte[nomeGruppo]) && g.scelte[nomeGruppo].some(unita));
+  const ricordi = posts.filter((p) => (nomeGruppo === GRUPPO_UMORE && p.umore && unita(p.umore)) || p.tags.some(unita));
+  if (!confirm(`${unite.join(', ')} diventano ${nome}. Cambiano ${nRicordi(ricordi.length)} e ${giorni.length === 1 ? '1 giorno' : giorni.length + ' giorni'}. Se vuoi poter tornare indietro, fai prima un backup.`)) return;
+
+  cambiaGruppo(nomeGruppo, (g) => ({ ...g, opzioni: sostituisci(g.opzioni) }));
+  const adesso = Date.now();
+  for (const g of giorni) await salvaPost({ ...g, scelte: { ...g.scelte, [nomeGruppo]: sostituisci(g.scelte[nomeGruppo]) }, modificato: adesso });
+  for (const p of ricordi) {
+    const umore = nomeGruppo === GRUPPO_UMORE && p.umore && unita(p.umore) ? nome : p.umore;
+    await salvaPost({ ...p, umore, tags: sostituisci(p.tags), modificato: adesso });
+  }
+  await ricarica();
 }
 
 // Togliere un gruppo o un'opzione non tocca i giorni già segnati.
@@ -855,53 +931,76 @@ function togliGruppo(nomeGruppo) {
   salvaGruppi(gruppiAttuali().filter((g) => g.nome !== nomeGruppo));
 }
 
+function nuovaSezione() {
+  const nome = chiediNome('Nome della nuova sezione');
+  if (!nome) return;
+  if ([...sezioniAttuali(), SEZIONE_ALTRO].some((s) => stessoNome(s, nome))) {
+    alert(`La sezione ${nome} esiste già.`);
+    return;
+  }
+  salvaImpostazioni({ sezioni: [...sezioniAttuali(), nome] });
+}
+
+function togliSezione(nome) {
+  if (!confirm(`Togliere la sezione ${nome}? I suoi gruppi restano e passano in un'altra sezione.`)) return;
+  salvaImpostazioni({ sezioni: sezioniAttuali().filter((s) => s !== nome) });
+}
+
 // Un'opzione segnata da un ricordo si cambia da lì: se i ricordi sono più d'uno, si va al giorno.
 function apriRicordiCollegati(data, ricordi) {
   if (ricordi.length === 1) apriModulo(ricordi[0]);
   else vaiAlGiorno(data);
 }
 
-function apriOChiudiGruppo(nome) {
-  if (gruppiAperti.has(nome)) gruppiAperti.delete(nome);
-  else gruppiAperti.add(nome);
+function apriOChiudi(insieme, nome) {
+  if (insieme.has(nome)) insieme.delete(nome);
+  else insieme.add(nome);
   disegnaOggi();
 }
 
-function disegnaGruppo(data, gruppo, scelte, posizione) {
-  // I conteggi stanno sempre aperti: sono poche righe.
-  const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || gruppo.tipo === 'conteggio';
-  const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudiGruppo(gruppo.nome) });
-  const testa = el('div', { className: 'gruppo-testa' }, el('h3', { textContent: gruppo.nome }));
-  if (modificaGruppi) {
-    testa.append(el('div', { className: 'gruppo-comandi' },
-      !gruppo.tipo && gruppo.nome !== GRUPPO_UMORE
-        ? el('button', { type: 'button', className: 'btn-testo', textContent: 'Diventa conteggio', onclick: () => diventaConteggio(gruppo.nome) })
-        : '',
-      el('button', { type: 'button', className: 'btn-testo', textContent: 'Togli gruppo', onclick: () => togliGruppo(gruppo.nome) })));
-  } else if (gruppo.tipo !== 'conteggio') {
-    testa.append(freccia);
-  }
-  const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte, aperto)
+// In Modifica, sotto il nome del gruppo: dove sta, in cosa si trasforma, e come toglierlo.
+function disegnaComandiGruppo(gruppo) {
+  const inElenco = gruppiAttuali().some((g) => g.nome === gruppo.nome);
+  const sezione = el('select', {
+    ariaLabel: 'Sezione',
+    onchange: (e) => cambiaGruppo(gruppo.nome, (g) => ({ ...g, sezione: e.target.value })),
+  }, ...[...sezioniAttuali(), SEZIONE_ALTRO].map((s) => el('option', { value: s, textContent: 'In ' + s })));
+  sezione.value = sezioneDi(gruppo);
+  const pulsante = (testo, azione) => el('button', { type: 'button', className: 'btn-testo', textContent: testo, onclick: azione });
+  const aScelte = !gruppo.tipo && gruppo.nome !== GRUPPO_UMORE;
+  return el('div', { className: 'gruppo-comandi' },
+    inElenco ? sezione : '',
+    aScelte ? pulsante('Diventa slider', () => converti(gruppo.nome, 'scala')) : '',
+    aScelte ? pulsante('Diventa conteggio', () => converti(gruppo.nome, 'conteggio')) : '',
+    !gruppo.tipo && inElenco ? pulsante('Unisci opzioni', () => unisciOpzioni(gruppo.nome)) : '',
+    pulsante('Togli gruppo', () => togliGruppo(gruppo.nome)));
+}
+
+function disegnaGruppo(data, gruppo, scelte) {
+  // Le scelte da chiuse stanno su una riga; slider e conteggi sono sempre aperti (li chiude la sezione).
+  const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || !!gruppo.tipo;
+  const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudi(gruppiAperti, gruppo.nome) });
+  const testa = el('div', { className: 'gruppo-testa' }, el('h3', { textContent: nomeMostrato(gruppo) }));
+  if (!modificaGruppi && !gruppo.tipo) testa.append(freccia);
+  const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte)
     : gruppo.tipo === 'conteggio' ? disegnaConteggi(data, gruppo, scelte)
     : disegnaScelte(data, gruppo, scelte, aperto);
-  return el('section', {
-    className: `gruppo gruppo-${gruppo.tipo || 'scelte'} colore-${posizione % COLORI_GRUPPI}${aperto ? '' : ' chiuso'}`,
-    // Toccare il riquadro fuori dai pulsanti fa lo stesso della freccia.
+  return el('div', {
+    className: `gruppo gruppo-${gruppo.tipo || 'scelte'}${aperto ? '' : ' chiuso'}`,
+    // Toccare il gruppo fuori dai pulsanti fa lo stesso della freccia.
     onclick: (e) => {
-      if (!modificaGruppi && freccia.isConnected && !freccia.hidden && !e.target.closest('button')) apriOChiudiGruppo(gruppo.nome);
+      if (!modificaGruppi && freccia.isConnected && !freccia.hidden && !e.target.closest('button')) apriOChiudi(gruppiAperti, gruppo.nome);
     },
-  }, testa, contenuto);
+  }, testa, modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto);
 }
 
 function disegnaScelte(data, gruppo, scelte, aperto) {
   const collegate = scelteDaRicordi(data).get(gruppo.nome) || new Map();
   const scelteQui = [...new Set([...collegate.keys(), ...(scelte[gruppo.nome] || [])])];
   // Da chiuso si vede una riga sola: le opzioni scelte stanno davanti, così restano visibili.
-  // Nel gruppo Umore ci sono anche gli umori usati nei ricordi prima che fossero opzioni.
-  const proprie = gruppo.nome === GRUPPO_UMORE ? [...gruppo.opzioni, ...umoriUsati()] : gruppo.opzioni;
   const opzioni = aperto
-    ? [...new Set([...proprie, ...scelteQui])]
-    : [...new Set([...scelteQui, ...proprie])];
+    ? [...new Set([...gruppo.opzioni, ...scelteQui])]
+    : [...new Set([...scelteQui, ...gruppo.opzioni])];
   return el('div', { className: 'chips' },
     ...opzioni.map((o) => el('button', {
       type: 'button',
@@ -917,61 +1016,139 @@ function disegnaScelte(data, gruppo, scelte, aperto) {
   );
 }
 
-// In Modifica: le voci di una scala o di un conteggio, da togliere o aggiungere.
+// In Modifica: le voci di un gruppo di slider o di conteggi, da togliere o aggiungere.
 function disegnaVociInModifica(gruppo) {
+  const inElenco = gruppiAttuali().some((g) => g.nome === gruppo.nome);
+  const aggiungi = (testo, numero) => el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: testo, onclick: () => aggiungiVoce(gruppo, numero) });
   return el('div', { className: 'voci' },
     ...gruppo.opzioni.map((voce) => el('div', { className: 'voce' },
-      el('span', { className: 'voce-nome', textContent: voce }),
-      gruppo.tipo === 'scala'
-        ? el('button', { type: 'button', className: 'btn-testo', textContent: '1…9', ariaLabel: 'Cosa vogliono dire 1 e 9', onclick: () => cambiaEstremi(gruppo.nome, voce) })
+      el('span', { className: 'voce-nome', textContent: voce + (eNumero(gruppo, voce) ? ' (numero)' : '') }),
+      gruppo.tipo === 'scala' && !eNumero(gruppo, voce)
+        ? el('button', { type: 'button', className: 'btn-testo', textContent: 'Parole', ariaLabel: 'Le parole dei punti da 1 a 9', onclick: () => cambiaParole(gruppo.nome, voce) })
         : '',
       el('button', { type: 'button', className: 'btn-testo', textContent: '×', ariaLabel: 'Togli', onclick: () => togliOpzione(gruppo.nome, voce) }))),
-    gruppiAttuali().some((g) => g.nome === gruppo.nome)
-      ? el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: '+ Aggiungi', onclick: () => aggiungiVoce(gruppo) })
+    inElenco
+      ? el('div', { className: 'chips' },
+        ...(gruppo.tipo === 'scala' ? [aggiungi('+ Slider', false), aggiungi('+ Numero', true)] : [aggiungi('+ Aggiungi', false)]))
       : '',
   );
 }
 
-function disegnaScale(data, gruppo, scelte, aperto) {
+// Uno slider da 1 a 9 con un pallino per ogni numero: si tocca un punto o si trascina.
+// Finché non si tocca è spento: non segnato non vuol dire 5. Serve in Oggi e nei voti dell'archivio.
+//   parole: le 9 parole dei punti ('' dove non c'è)
+//   scegli(n): chiamata quando si lascia il dito su un numero diverso; togli(): per la ×
+//   apri(): se c'è, il valore non si cambia qui e toccare lo slider chiama apri
+function creaSlider({ nome = '', valore, parole, scegli, togli, apri, dopo = '' }) {
+  const etichetta = (n) => (n ? n + (parole[n - 1] ? ' · ' + parole[n - 1] : '') : '–') + dopo;
+  const scritta = el('span', { className: 'slider-valore' });
+  const punti = SCALA.map((n) => el('span', { className: 'slider-punto' + (n === SCALA_NORMALE ? ' normale' : ''), style: `--i: ${n - 1}` }));
+  const binario = el('div', { className: 'slider' }, el('span', { className: 'slider-linea' }), ...punti);
+  const mostra = (n) => {
+    punti.forEach((p, i) => p.classList.toggle('attivo', i + 1 === n));
+    binario.classList.toggle('vuoto', !n);
+    binario.style.setProperty('--valore', n ? n - 1 : 0);
+    scritta.textContent = etichetta(n);
+  };
+  mostra(valore);
+
+  if (apri) {
+    binario.onclick = apri;
+  } else {
+    let scelto = null;
+    const punto = (e) => {
+      const r = binario.getBoundingClientRect();
+      return Math.min(9, Math.max(1, Math.round(((e.clientX - r.left - 14) / (r.width - 28)) * 8) + 1));
+    };
+    binario.onpointerdown = (e) => {
+      binario.setPointerCapture(e.pointerId);
+      scelto = punto(e);
+      mostra(scelto);
+    };
+    binario.onpointermove = (e) => {
+      if (scelto === null) return;
+      scelto = punto(e);
+      mostra(scelto);
+    };
+    binario.onpointerup = () => {
+      if (scelto !== null && scelto !== valore) scegli(scelto);
+      scelto = null;
+    };
+    // Succede quando il dito scorre la pagina in verticale: non si sceglie niente.
+    binario.onpointercancel = () => {
+      scelto = null;
+      mostra(valore);
+    };
+  }
+  return el('div', { className: 'slider-voce' },
+    el('div', { className: 'slider-testa' },
+      nome ? el('span', { className: 'voce-nome', textContent: nome }) : '',
+      scritta,
+      valore && !apri
+        ? el('button', { type: 'button', className: 'btn-testo slider-togli', textContent: '×', ariaLabel: 'Togli il valore', onclick: togli })
+        : ''),
+    binario,
+    el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[8] })));
+}
+
+function disegnaSlider(data, gruppo, voce, valore, post, conNome) {
+  return creaSlider({
+    nome: conNome ? voce : '',
+    valore,
+    parole: paroleDi(gruppo, voce),
+    scegli: (n) => cambiaValori(data, gruppo, { [voce]: n }),
+    togli: () => cambiaValori(data, gruppo, { [voce]: null }),
+    // Il valore viene da una voce dell'archivio: si cambia da lì.
+    apri: post ? () => apriModulo(post) : null,
+    dopo: post ? ' ↗ ' + post.raccolta : '',
+  });
+}
+
+// Una casella dove si scrive un numero, anche con la virgola (7,5 ore). Vuota toglie il valore.
+function disegnaCasella(data, gruppo, voce, valore) {
+  return el('label', { className: 'voce' },
+    el('span', { className: 'voce-nome', textContent: voce }),
+    el('input', {
+      type: 'text',
+      inputMode: 'decimal',
+      className: 'casella-numero',
+      placeholder: '–',
+      value: valore === undefined ? '' : numeroLeggibile(valore),
+      onkeydown: (e) => { if (e.key === 'Enter') e.target.blur(); },
+      onchange: (e) => {
+        const scritto = e.target.value.trim();
+        const n = Number(scritto.replace(',', '.'));
+        if (!scritto) cambiaValori(data, gruppo, { [voce]: null });
+        else if (n >= 0) cambiaValori(data, gruppo, { [voce]: n });
+        else disegnaOggi(); // non è un numero: torna quello di prima
+      },
+    }));
+}
+
+function disegnaScale(data, gruppo, scelte) {
   if (modificaGruppi) return disegnaVociInModifica(gruppo);
   // Un voto dell'archivio vale più di quello segnato a mano, e si cambia da lì.
   const daArchivio = valoriDaArchivio(data, gruppo.nome);
-  const valori = { ...valoriDi(gruppo, scelte[gruppo.nome]) };
+  const segnato = scelte[gruppo.nome];
+  const valori = { ...valoriDi(gruppo, segnato) };
   for (const [voce, post] of daArchivio) valori[voce] = votoDi(post);
   const voci = [...new Set([...gruppo.opzioni, ...Object.keys(valori)])];
-  // Da chiuso: una riga con i valori segnati davanti, poi le scale ancora vuote.
-  if (!aperto) {
-    return el('div', { className: 'chips' },
-      ...[...voci.filter((v) => v in valori), ...voci.filter((v) => !(v in valori))].map((v) => el('span', {
-        className: 'chip' + (v in valori ? ' attivo' : '') + (daArchivio.has(v) ? ' collegato' : ''),
-        textContent: v in valori ? `${v} ${valori[v]}${daArchivio.has(v) ? ' ↗' : ''}` : v,
-      })));
-  }
-  const vuote = voci.filter((v) => !(v in valori));
+  const slider = voci.filter((v) => !eNumero(gruppo, v));
+  const vuoti = slider.filter((v) => !(v in valori));
+  // Un gruppo con uno slider solo che si chiama come lui non ripete il nome.
+  const conNome = !(voci.length === 1 && voci[0] === gruppo.nome);
   return el('div', { className: 'voci' },
-    ...voci.map((v) => {
-      const [basso, alto] = (gruppo.estremi || {})[v] || [];
-      const post = daArchivio.get(v);
-      return el('div', { className: 'scala' },
-        el('div', { className: 'voce-nome', textContent: post ? `${v} ↗ ${post.raccolta}` : v }),
-        el('div', { className: 'scala-numeri' },
-          ...SCALA.map((n) => el('button', {
-            type: 'button',
-            className: 'scala-numero' + (valori[v] === n ? ' attivo' : '') + (n === SCALA_NORMALE ? ' normale' : ''),
-            textContent: n,
-            // Toccare il valore scelto lo toglie: non segnato non vuol dire 5.
-            onclick: () => (post ? apriModulo(post) : cambiaValori(data, gruppo, { [v]: valori[v] === n ? null : n })),
-          }))),
-        el('div', { className: 'scala-estremi' },
-          el('span', { textContent: basso || 'Per niente' }),
-          el('span', { textContent: alto || 'Moltissimo' })));
-    }),
-    vuote.length
+    // Un gruppo appena diventato slider: nei giorni di prima resta cosa si era scelto.
+    Array.isArray(segnato) && segnato.length ? el('p', { className: 'nota', textContent: 'Segnato prima: ' + segnato.join(', ') }) : '',
+    ...voci.map((v) => (eNumero(gruppo, v)
+      ? disegnaCasella(data, gruppo, v, valori[v])
+      : disegnaSlider(data, gruppo, v, valori[v], daArchivio.get(v), conNome))),
+    vuoti.length && slider.length > 1
       ? el('button', {
         type: 'button',
         className: 'btn-secondario btn-come-al-solito',
-        textContent: vuote.length === voci.length ? 'Tutto come al solito (5)' : 'Le altre come al solito (5)',
-        onclick: () => cambiaValori(data, gruppo, Object.fromEntries(vuote.map((v) => [v, SCALA_NORMALE]))),
+        textContent: vuoti.length === slider.length ? 'Tutto come al solito (5)' : 'Gli altri come al solito (5)',
+        onclick: () => cambiaValori(data, gruppo, Object.fromEntries(vuoti.map((v) => [v, SCALA_NORMALE]))),
       })
       : '',
   );
@@ -1009,6 +1186,28 @@ function disegnaConteggi(data, gruppo, scelte) {
   );
 }
 
+// Una sezione (Salute mentale...) è un riquadro col suo colore che contiene dei gruppi.
+// Da chiusa mostra una riga con quello che è segnato; toccandola si apre.
+function disegnaSezione(data, nome, gruppiSezione, scelte, posizione) {
+  const aperta = modificaGruppi || sezioniAperte.has(nome);
+  const tutte = scelteDelGiorno(data);
+  const riassunto = testoScelte(Object.fromEntries(gruppiSezione.filter((g) => g.nome in tutte).map((g) => [g.nome, tutte[g.nome]])));
+  const testa = el('div', { className: 'sezione-testa' },
+    el('h2', { textContent: nome }),
+    modificaGruppi
+      ? (nome !== SEZIONE_ALTRO ? el('button', { type: 'button', className: 'btn-testo', textContent: 'Togli sezione', onclick: () => togliSezione(nome) }) : '')
+      : el('span', { className: 'gruppo-freccia', textContent: aperta ? '▴' : '▾' }));
+  return el('section', {
+    className: `sezione colore-${posizione % COLORI_GRUPPI}${aperta ? '' : ' chiusa'}`,
+    onclick: (e) => {
+      if (!modificaGruppi && !e.target.closest('button, input, select, .gruppo')) apriOChiudi(sezioniAperte, nome);
+    },
+  }, testa,
+    ...(aperta
+      ? gruppiSezione.map((g) => disegnaGruppo(data, g, scelte))
+      : [el('p', { className: 'sezione-riassunto', textContent: riassunto || 'Niente segnato' })]));
+}
+
 function disegnaOggi() {
   const data = giornoMostrato || oggi();
   const giornata = giornataDel(data);
@@ -1017,6 +1216,8 @@ function disegnaOggi() {
   const gruppi = [...gruppiAttuali()];
   const nomiSegnati = [...Object.keys(scelte), ...scelteDaRicordi(data).keys()];
   for (const nome of nomiSegnati) if (!gruppi.some((g) => g.nome === nome)) gruppi.push(gruppoChiamato(nome, scelte[nome]));
+  const perSezione = new Map([...sezioniAttuali(), SEZIONE_ALTRO].map((s) => [s, []]));
+  for (const g of gruppi) perSezione.get(sezioneDi(g)).push(g);
 
   const spostati = (giorni) => {
     const d = new Date(data + 'T00:00');
@@ -1040,12 +1241,16 @@ function disegnaOggi() {
         })),
       el('button', { type: 'button', className: 'btn-testo', textContent: '›', ariaLabel: 'Giorno dopo', disabled: data >= oggi(), onclick: () => spostati(1) }),
     ),
-    ...gruppi.map((g, i) => disegnaGruppo(data, g, scelte, i)),
+    // Le sezioni vuote si vedono solo in Modifica, per poterci spostare dei gruppi.
+    ...[...perSezione]
+      .filter(([nome, gruppiSezione]) => gruppiSezione.length || (modificaGruppi && nome !== SEZIONE_ALTRO))
+      .map(([nome, gruppiSezione], i) => disegnaSezione(data, nome, gruppiSezione, scelte, i)),
     el('div', { className: 'oggi-azioni' },
       modificaGruppi
         ? el('div', { className: 'nuovi-gruppi' },
+          el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuova sezione', onclick: nuovaSezione }),
           el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuovo gruppo', onclick: () => nuovoGruppo() }),
-          el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuove scale 1–9', onclick: () => nuovoGruppo('scala') }),
+          el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuovi slider', onclick: () => nuovoGruppo('scala') }),
           el('button', { type: 'button', className: 'btn-secondario', textContent: '+ Nuovo conteggio', onclick: () => nuovoGruppo('conteggio') }))
         : '',
       el('button', {
@@ -1058,7 +1263,6 @@ function disegnaOggi() {
   );
 
   // La freccia serve solo se le opzioni non stanno in una riga: lo si sa dopo averle disegnate.
-  // Le scale da chiuse la freccia la tengono sempre, perché i numeri si vedono solo da aperte.
   for (const gruppo of $('pagina-oggi').querySelectorAll('.gruppo-scelte.chiuso')) {
     const chips = gruppo.querySelector('.chips');
     gruppo.querySelector('.gruppo-freccia').hidden = chips.scrollHeight <= chips.clientHeight + 1;
