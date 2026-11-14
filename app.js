@@ -1385,15 +1385,16 @@ function disegnaOggi() {
 // ---------------------------------------------------------------------------
 // Home
 //
-// La pagina che si apre per prima. In alto la giornata di ieri in sintesi (oggi è ancora da
-// riempire): il benessere, con le colonne degli ultimi sette giorni, l'umore, la media di ogni
-// gruppo di voti, i numeri (ore dormite) e i conteggi, e cosa si è fatto. Poi il mese e l'anno
-// fino a oggi. Il benessere di un giorno è la media di tutti i voti da 1 a 9 segnati quel
-// giorno, in tutti i gruppi. Si ricalcola ogni volta.
+// La pagina che si apre per prima. Mostra un periodo che finisce ieri (oggi è ancora da
+// riempire): gli ultimi 7 giorni, e con un tocco gli ultimi 30 o l'anno; i riquadri restano
+// gli stessi. In cima il benessere (la media pesata di tutti i voti del giorno, vedi
+// benessereDi) con le sue colonne e, sotto, le righe dei gruppi che lo compongono; poi un
+// riquadro per ogni gruppo messo "a sé"; in fondo ricordi e giorni registrati. Dove sta ogni
+// gruppo si sceglie in Impostazioni (postoInHome). Regola: un riquadro c'è se risponde a una
+// domanda vera ("quanto mi muovo?"), quindi mai "in quanti giorni ho segnato X".
 // ---------------------------------------------------------------------------
 
 const NIENTE = 'Niente'; // un'opzione che vuol dire "non l'ho fatto": non conta come fatta
-const GIORNI_NEL_GRAFICO = 7;
 
 const media = (numeri) => numeri.reduce((a, b) => a + b, 0) / numeri.length;
 const arrotonda = (n) => Math.round(n * 10) / 10;
@@ -1467,23 +1468,82 @@ function benessereDi(riassunto) {
   }
   return pesi ? somma / pesi : undefined;
 }
-const mediaDeiVoti = (voti) => media(voti.map(([, n]) => n));
 
-// Il riquadro della media di un gruppo di voti. Un gruppo con un voto solo (Sonno, che ha Ore
-// dormite come numero e Riposo come voto) prende il nome e l'icona di quel voto.
-function riquadroVoti(gruppo, valori, nota = '', onclick = undefined) {
-  const voti = gruppo.opzioni.filter((v) => !eNumero(gruppo, v));
-  const nome = voti.length === 1 ? voti[0] : nomeMostrato(gruppo);
-  const m = media(valori);
-  return riquadro({
-    icona: iconaDi(nome) || iconaDi(gruppo.nome),
-    nome,
-    valore: scriviSuScala(m, gruppo),
-    voto: suNove(m, gruppo),
-    nota: [nota, eScalaBase(gruppo) ? '' : `da ${scriviSuScala(minimoDi(gruppo), gruppo)} a ${scriviSuScala(massimoDi(gruppo), gruppo)}`].filter(Boolean).join(' · '),
-    onclick,
-  });
+// Dove sta ogni gruppo nella Home, scelto in Impostazioni (`impostazioniGruppi.home`, per nome):
+// 'benessere' (righe nel riquadro del benessere, solo per i gruppi di voti), 'riquadro' (uno
+// suo) o 'nascosto'. Senza scelta i gruppi di voti stanno nel benessere, gli altri a sé.
+const POSTI_HOME = { benessere: 'Nel benessere', riquadro: 'A sé', nascosto: 'Nascosto' };
+function postiPossibili(gruppo) {
+  return gruppo.tipo === 'scala' ? ['benessere', 'riquadro', 'nascosto'] : ['riquadro', 'nascosto'];
 }
+function postoInHome(gruppo) {
+  const scelto = ((impostazioniGruppi && impostazioniGruppi.home) || {})[gruppo.nome];
+  if (postiPossibili(gruppo).includes(scelto)) return scelto;
+  return gruppo.tipo === 'scala' ? 'benessere' : 'riquadro';
+}
+function cambiaPostoInHome(nome, posto) {
+  salvaImpostazioni({ home: { ...((impostazioniGruppi && impostazioniGruppi.home) || {}), [nome]: posto } });
+}
+
+// I periodi della Home, tutti fino a ieri. L'anno comincia il primo gennaio.
+const PERIODI = {
+  settimana: { nome: '7 giorni', titolo: 'Ultimi 7 giorni', giorni: 7 },
+  mese: { nome: 'Mese', titolo: 'Ultimi 30 giorni', giorni: 30 },
+  anno: { nome: 'Anno', titolo: "Quest'anno" },
+};
+let periodoHome = 'settimana';
+
+function indietro(data, giorni) {
+  const d = new Date(data + 'T00:00');
+  d.setDate(d.getDate() - giorni);
+  return dataDa(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function giorniDelPeriodo(periodo, fine) {
+  const { giorni } = PERIODI[periodo];
+  return giorniTra(giorni ? indietro(fine, giorni - 1) : fine.slice(0, 4) + '-01-01', fine);
+}
+
+// Tutto quello che serve alla Home per dei giorni: per gruppo, i voti, i numeri, i conteggi e
+// le volte di ogni opzione; il benessere di ogni giorno; ricordi e giorni registrati.
+function statistiche(giorni) {
+  const riassunti = giorni.map(riassuntoDelGiorno);
+  const s = { giorni, voti: new Map(), numeri: new Map(), conteggi: new Map(), volte: new Map() };
+  const aggiungi = (mappa, chiave, valori) => mappa.set(chiave, [...(mappa.get(chiave) || []), ...valori]);
+  for (const r of riassunti) {
+    for (const [g, v] of r.voti) aggiungi(s.voti, g.nome, v.map(([, n]) => n));
+    for (const [voce, n] of r.numeri) aggiungi(s.numeri, voce, [n]);
+    for (const [g, n] of r.conteggi) s.conteggi.set(g.nome, (s.conteggi.get(g.nome) || 0) + n);
+    const scelte = [...r.fatte.map(([g, o]) => [g.nome, o]), ...r.umori.map((o) => [GRUPPO_UMORE, o])];
+    for (const [g, o] of scelte) {
+      if (!s.volte.has(g)) s.volte.set(g, new Map());
+      s.volte.get(g).set(o, (s.volte.get(g).get(o) || 0) + 1);
+    }
+  }
+  s.benessere = riassunti.map(benessereDi); // un valore per giorno, undefined dove non c'è
+  const delPeriodo = posts.filter((p) => p.data >= giorni[0] && p.data <= giorni[giorni.length - 1]);
+  s.registrati = giorni.filter((d) => giornataPiena(giornataDel(d)) || delPeriodo.some((p) => p.data === d)).length;
+  s.ricordi = delPeriodo.filter((p) => !p.raccolta).length;
+  s.archivio = delPeriodo.length - s.ricordi;
+  s.belli = giorni.filter(giornataBella).length;
+  return s;
+}
+const mediaSe = (valori) => (valori && valori.length ? media(valori) : undefined);
+const benessereMedio = (s) => mediaSe(s.benessere.filter((v) => v !== undefined));
+
+// "↑ 0,4" rispetto al periodo prima; niente se prima non c'era.
+function freccia(adesso, prima) {
+  if (adesso === undefined || prima === undefined) return '';
+  const d = arrotonda(adesso - prima);
+  return d > 0 ? '↑ ' + numeroLeggibile(d) : d < 0 ? '↓ ' + numeroLeggibile(-d) : '=';
+}
+
+// Il nome con cui si mostrano i voti di un gruppo: un gruppo con un voto solo (Sonno, che ha
+// Ore dormite come numero e Riposo come voto) prende il nome e l'icona di quel voto.
+function nomeDeiVoti(gruppo) {
+  const voti = gruppo.opzioni.filter((v) => !eNumero(gruppo, v));
+  return voti.length === 1 ? voti[0] : nomeMostrato(gruppo);
+}
+const scalaScritta = (gruppo) => (eScalaBase(gruppo) ? '' : `da ${scriviSuScala(minimoDi(gruppo), gruppo)} a ${scriviSuScala(massimoDi(gruppo), gruppo)}`);
 
 // Un riquadro della Home: sopra l'icona e il nome, sotto il valore grande, e una nota piccola.
 //   voto: se il valore è un voto da 1 a 9, prende il suo colore (dal rosso al verde)
@@ -1503,98 +1563,133 @@ function riquadro({ icona = '', nome, valore, nota = '', voto, onclick, largo = 
 }
 const scriviVoto = (n) => numeroLeggibile(arrotonda(n));
 
-// Le colonne del benessere giorno per giorno, alte quanto il voto e del suo colore.
-function graficoBenessere(giorni) {
-  return el('div', { className: 'grafico' }, ...giorni.map((data) => {
-    const v = benessereDi(riassuntoDelGiorno(data));
-    return el('div', { className: 'grafico-giorno' },
-      el('span', { className: 'grafico-numero', textContent: v ? scriviVoto(v) : '' }),
+// Le colonne del benessere: colonne = [{ valore, etichetta }], alte quanto il voto e del suo
+// colore. Il numero sopra si scrive solo quando le colonne sono poche.
+function graficoBenessere(colonne) {
+  const conNumeri = colonne.length <= 12;
+  return el('div', { className: 'grafico' + (conNumeri ? '' : ' fitto'), style: `--colonne: ${colonne.length}` },
+    ...colonne.map(({ valore, etichetta }) => el('div', { className: 'grafico-giorno' },
+      conNumeri ? el('span', { className: 'grafico-numero', textContent: valore ? scriviVoto(valore) : '' }) : '',
       el('div', { className: 'grafico-spazio' },
-        v ? el('span', { className: 'grafico-colonna tinta', style: `--n: ${v}; height: ${(v / 9) * 100}%` }) : ''),
-      el('span', { className: 'grafico-data', textContent: new Date(data + 'T00:00').toLocaleDateString('it-IT', { weekday: 'short' }) }));
+        valore ? el('span', { className: 'grafico-colonna tinta', style: `--n: ${valore}; height: ${(valore / 9) * 100}%` }) : ''),
+      el('span', { className: 'grafico-data', textContent: etichetta }))));
+}
+
+// Le colonne del periodo: una per giorno (nel mese l'etichetta ogni 7 giorni), una per mese nell'anno.
+function colonneDelPeriodo(periodo, s) {
+  if (periodo === 'anno') {
+    const mesi = new Map();
+    s.giorni.forEach((d, i) => { if (s.benessere[i] !== undefined) mesi.set(d.slice(5, 7), [...(mesi.get(d.slice(5, 7)) || []), s.benessere[i]]); });
+    const ultimo = Number(s.giorni[s.giorni.length - 1].slice(5, 7));
+    return Array.from({ length: ultimo }, (_, i) => {
+      const mese = String(i + 1).padStart(2, '0');
+      return { valore: mediaSe(mesi.get(mese)), etichetta: new Date(`${s.giorni[0].slice(0, 4)}-${mese}-01T00:00`).toLocaleDateString('it-IT', { month: 'narrow' }) };
+    });
+  }
+  const fitto = s.giorni.length > 7;
+  return s.giorni.map((d, i) => ({
+    valore: s.benessere[i],
+    etichetta: fitto
+      ? ((s.giorni.length - 1 - i) % 7 === 0 ? String(Number(d.slice(8))) : '')
+      : new Date(d + 'T00:00').toLocaleDateString('it-IT', { weekday: 'short' }),
   }));
 }
 
-// I riquadri di un periodo (il mese, l'anno) fino a oggi.
-function riquadriPeriodo(giorni) {
-  const riassunti = giorni.map(riassuntoDelGiorno);
-  const nelPeriodo = posts.filter((p) => p.data >= giorni[0] && p.data <= giorni[giorni.length - 1]);
-  const registrati = giorni.filter((d) => giornataPiena(giornataDel(d)) || nelPeriodo.some((p) => p.data === d)).length;
-  const benessere = riassunti.map(benessereDi).filter((v) => v !== undefined);
-  // Per ogni gruppo di voti la media, per ogni gruppo a scelte in quanti giorni c'è qualcosa,
-  // per numeri e conteggi la media e il totale. Solo i gruppi che ci sono ancora.
-  const attuali = new Set(gruppiAttuali().map((g) => g.nome));
-  const voti = new Map();
-  const giorniPerGruppo = new Map();
-  const numeri = new Map();
-  const conteggi = new Map();
-  for (const r of riassunti) {
-    for (const [g, v] of r.voti) if (attuali.has(g.nome)) voti.set(g.nome, [...(voti.get(g.nome) || []), ...v.map(([, n]) => n)]);
-    for (const g of new Set(r.fatte.map(([gruppo]) => gruppo.nome))) if (attuali.has(g)) giorniPerGruppo.set(g, (giorniPerGruppo.get(g) || 0) + 1);
-    for (const [voce, n] of r.numeri) numeri.set(voce, [...(numeri.get(voce) || []), n]);
-    for (const [g, n] of r.conteggi) conteggi.set(g.nome, (conteggi.get(g.nome) || 0) + n);
-  }
-  const belli = giorni.filter(giornataBella).length;
-  const ricordi = nelPeriodo.filter((p) => !p.raccolta).length;
-  const archivio = nelPeriodo.length - ricordi;
-  return [
-    riquadro({ icona: '📅', nome: 'Giorni registrati', valore: String(registrati), nota: `su ${giorni.length}` }),
-    benessere.length ? riquadro({ icona: '✨', nome: 'Benessere', valore: scriviVoto(media(benessere)), voto: media(benessere), nota: 'in media' }) : '',
-    ...[...voti].map(([g, v]) => riquadroVoti(gruppoChiamato(g), v, 'in media')),
-    ...[...giorniPerGruppo].map(([g, n]) => riquadro({ icona: iconaDi(g), nome: nomeMostrato(gruppoChiamato(g)), valore: String(n), nota: n === 1 ? 'giorno' : 'giorni' })),
-    ...[...numeri].map(([voce, v]) => riquadro({ icona: iconaDi(voce), nome: voce, valore: scriviVoto(media(v)), nota: 'in media' })),
-    ...[...conteggi].map(([g, n]) => riquadro({ icona: iconaDi(g), nome: g, valore: numeroLeggibile(arrotonda(n)), nota: 'in tutto' })),
-    riquadro({ icona: '📖', nome: 'Ricordi', valore: String(ricordi) }),
-    archivio ? riquadro({ icona: '🗂️', nome: 'Nell\'archivio', valore: String(archivio) }) : '',
-    belli ? riquadro({ icona: '⭐', nome: 'Giorni belli', valore: String(belli) }) : '',
-  ].filter(Boolean);
+// Una riga nel riquadro del benessere: nome, valore colorato e freccia rispetto a prima.
+function rigaBenessere(icona, nome, valore, scritto, voto, prima) {
+  return el('div', { className: 'benessere-riga' },
+    el('span', { className: 'benessere-riga-nome', textContent: (icona ? icona + ' ' : '') + nome }),
+    el('strong', { className: voto ? 'tinta' : '', style: voto ? `--n: ${voto}; color: var(--tinta)` : '', textContent: scritto }),
+    el('span', { className: 'benessere-riga-freccia', textContent: freccia(valore, prima) }));
 }
 
 function disegnaHome() {
   const adesso = oggi();
   const ieri = giornoPrima(adesso);
-  const vaiAIeri = () => apriGiorno(ieri);
-  const giorno = riassuntoDelGiorno(ieri);
-  const benessere = benessereDi(giorno);
-  let inizioSettimana = ieri;
-  for (let i = 1; i < GIORNI_NEL_GRAFICO; i++) inizioSettimana = giornoPrima(inizioSettimana);
-  const settimana = giorniTra(inizioSettimana, ieri);
-  const riquadriIeri = [
-    giorno.umori.length ? riquadro({ icona: iconaDi(giorno.umori[0]) || iconaDi(GRUPPO_UMORE), nome: 'Umore', valore: giorno.umori.join(', '), onclick: vaiAIeri }) : '',
-    ...giorno.voti.map(([g, v]) => riquadroVoti(g, v.map(([, n]) => n), '', vaiAIeri)),
-    ...giorno.numeri.map(([voce, n]) => riquadro({ icona: iconaDi(voce), nome: voce, valore: numeroLeggibile(n), onclick: vaiAIeri })),
-    ...giorno.conteggi.map(([g, n]) => riquadro({ icona: iconaDi(g.nome), nome: g.nome, valore: numeroLeggibile(n), onclick: vaiAIeri })),
-  ].filter(Boolean);
+  const periodo = periodoHome;
+  const giorni = giorniDelPeriodo(periodo, ieri);
+  const s = statistiche(giorni);
+  const prima = statistiche(giorniTra(indietro(giorni[0], giorni.length), giornoPrima(giorni[0])));
+  const gruppi = gruppiAttuali();
+  const settimana = periodo === 'settimana';
+
+  // Il riquadro del benessere: nella settimana il numero di ieri, negli altri periodi la media.
+  const numero = settimana ? s.benessere[s.benessere.length - 1] : benessereMedio(s);
+  const righe = [];
+  for (const g of gruppi.filter((g) => postoInHome(g) === 'benessere')) {
+    const v = mediaSe(s.voti.get(g.nome));
+    if (v !== undefined) righe.push(rigaBenessere(iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome), nomeDeiVoti(g), v, scriviSuScala(v, g), suNove(v, g), mediaSe(prima.voti.get(g.nome))));
+    for (const voce of g.opzioni.filter((x) => eNumero(g, x))) {
+      const n = mediaSe(s.numeri.get(voce));
+      if (n !== undefined) righe.push(rigaBenessere(iconaDi(voce), voce, n, scriviVoto(n), undefined, mediaSe(prima.numeri.get(voce))));
+    }
+  }
+  const benessere = riquadro({
+    icona: '✨',
+    nome: 'Benessere',
+    valore: numero === undefined ? '–' : scriviVoto(numero),
+    voto: numero,
+    nota: settimana ? 'ieri' : `in media · ${freccia(numero, benessereMedio(prima)) || 'prima non c\'erano voti'}`,
+    largo: true,
+    onclick: settimana ? () => apriGiorno(ieri) : undefined,
+  }, graficoBenessere(colonneDelPeriodo(periodo, s)), righe.length ? el('div', { className: 'benessere-righe' }, ...righe) : '');
+
+  // Un riquadro per ogni gruppo messo a sé
+  const riquadri = [];
+  for (const g of gruppi.filter((g) => postoInHome(g) === 'riquadro')) {
+    if (g.tipo === 'scala') {
+      const v = mediaSe(s.voti.get(g.nome));
+      if (v !== undefined) {
+        riquadri.push(riquadro({
+          icona: iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome),
+          nome: nomeDeiVoti(g),
+          valore: scriviSuScala(v, g),
+          voto: suNove(v, g),
+          nota: ['in media', scalaScritta(g), freccia(v, mediaSe(prima.voti.get(g.nome)))].filter(Boolean).join(' · '),
+        }));
+      }
+      for (const voce of g.opzioni.filter((x) => eNumero(g, x))) {
+        const n = mediaSe(s.numeri.get(voce));
+        if (n !== undefined) riquadri.push(riquadro({ icona: iconaDi(voce), nome: voce, valore: scriviVoto(n), nota: ['in media', freccia(n, mediaSe(prima.numeri.get(voce)))].filter(Boolean).join(' · ') }));
+      }
+    } else if (g.tipo === 'conteggio') {
+      const totale = s.conteggi.get(g.nome);
+      if (totale !== undefined) {
+        const alGiorno = s.registrati ? numeroLeggibile(arrotonda(totale / s.registrati)) + ' al giorno · ' : '';
+        riquadri.push(riquadro({ icona: iconaDi(g.nome), nome: g.nome, valore: numeroLeggibile(arrotonda(totale)), nota: `${alGiorno}prima ${numeroLeggibile(arrotonda(prima.conteggi.get(g.nome) || 0))}` }));
+      }
+    } else {
+      // A scelte: quante volte ogni opzione, dalla più frequente. Per l'umore conta quello più frequente.
+      const volte = [...(s.volte.get(g.nome) || new Map())].sort((a, b) => b[1] - a[1]);
+      if (!volte.length) continue;
+      const [primo, quante] = volte[0];
+      riquadri.push(g.nome === GRUPPO_UMORE
+        ? riquadro({ icona: iconaDi(primo) || iconaDi(g.nome), nome: 'Umore più frequente', valore: primo, nota: quante === 1 ? '1 volta' : quante + ' volte' },
+          ...volte.slice(1, 4).map(([o, n]) => el('span', { className: 'riquadro-voce', textContent: `${conIcona(o)} ${n}` })))
+        : riquadro({ icona: iconaDi(g.nome), nome: nomeMostrato(g), valore: String(volte.reduce((t, [, n]) => t + n, 0)), nota: volte.reduce((t, [, n]) => t + n, 0) === 1 ? 'volta' : 'volte' },
+          ...volte.slice(0, 5).map(([o, n]) => el('span', { className: 'riquadro-voce', textContent: `${conIcona(o)} ${n}` }))));
+    }
+  }
 
   const lungo = (data, opzioni) => new Date(data + 'T00:00').toLocaleDateString('it-IT', opzioni);
-  const titolo = (testo) => el('h3', { className: 'home-titolo', textContent: testo });
   $('pagina-home').replaceChildren(
     el('div', { className: 'home-testa' },
       el('h2', { textContent: 'La mia vita' }),
       el('p', { className: 'home-data', textContent: lungo(adesso, { weekday: 'long', day: 'numeric', month: 'long' }) })),
-    titolo(`Ieri, ${lungo(ieri, { weekday: 'long', day: 'numeric', month: 'long' })}${giornataBella(ieri) ? ' ★' : ''}`),
-    // Il benessere sta sempre in cima, largo, con le colonne della settimana.
+    el('div', { className: 'home-periodi' }, ...Object.entries(PERIODI).map(([nome, p]) => el('button', {
+      type: 'button',
+      className: 'chip' + (nome === periodo ? ' attivo' : ''),
+      textContent: p.nome,
+      onclick: () => { periodoHome = nome; disegnaHome(); },
+    }))),
+    el('h3', { className: 'home-titolo', textContent: `${PERIODI[periodo].titolo}, fino a ieri` }),
     el('div', { className: 'riquadri' },
-      riquadro({
-        icona: '✨',
-        nome: 'Benessere',
-        valore: benessere ? scriviVoto(benessere) : '–',
-        voto: benessere,
-        nota: 'media pesata dei voti da 1 a 9 · ultimi 7 giorni',
-        largo: true,
-        onclick: vaiAIeri,
-      }, graficoBenessere(settimana)),
-      ...riquadriIeri),
-    riquadriIeri.length || benessere ? '' : el('button', { type: 'button', className: 'riquadro riquadro-vuoto', onclick: vaiAIeri },
-      el('span', { textContent: 'Ieri non hai segnato niente.' }), el('strong', { textContent: 'Segnalo ora ›' })),
-    ...(giorno.fatte.length
-      ? [titolo('Ieri hai fatto'),
-        el('div', { className: 'chips home-fatte' }, ...giorno.fatte.map(([, o]) => el('button', { type: 'button', className: 'chip', textContent: conIcona(o), onclick: vaiAIeri })))]
-      : []),
-    titolo('Il tuo mese: ' + lungo(adesso, { month: 'long' })),
-    el('div', { className: 'riquadri' }, ...riquadriPeriodo(giorniTra(adesso.slice(0, 8) + '01', adesso))),
-    titolo('Il tuo anno: ' + adesso.slice(0, 4)),
-    el('div', { className: 'riquadri' }, ...riquadriPeriodo(giorniTra(adesso.slice(0, 5) + '01-01', adesso))),
+      benessere,
+      ...riquadri,
+      riquadro({ icona: '📖', nome: 'Ricordi', valore: String(s.ricordi) }),
+      s.archivio ? riquadro({ icona: '🗂️', nome: 'Nell\'archivio', valore: String(s.archivio) }) : '',
+      s.belli ? riquadro({ icona: '⭐', nome: 'Giorni belli', valore: String(s.belli) }) : ''),
+    el('p', { className: 'home-piede', textContent: `Giorni registrati: ${s.registrati} su ${giorni.length}` }),
   );
 }
 
@@ -1703,6 +1798,17 @@ function disegnaImpostazioni() {
       el('div', { className: 'chips' },
         el('button', { type: 'button', className: 'btn-secondario', textContent: pinAttivo() ? 'Cambia PIN' : 'Scegli un PIN', onclick: () => scegliPin().catch(mostraErrore) }),
         pinAttivo() ? el('button', { type: 'button', className: 'btn-secondario', textContent: 'Togli PIN', onclick: togliPin }) : '')),
+    el('section', { className: 'impostazione' },
+      el('h3', { textContent: '🏠 Home' }),
+      el('p', { className: 'nota', textContent: 'Dove compare ogni gruppo nella Home: nel riquadro del benessere (solo i gruppi di voti), in un riquadro a sé, oppure da nessuna parte. Nascondere un gruppo non cambia il calcolo del benessere: per quello ci sono i pesi qui sotto.' }),
+      ...gruppiAttuali().map((g) => el('div', { className: 'peso' },
+        el('span', { className: 'voce-nome', textContent: conIcona(g.nome, nomeMostrato(g)) }),
+        el('div', { className: 'peso-scelte' }, ...postiPossibili(g).map((posto) => el('button', {
+          type: 'button',
+          className: 'chip' + (postoInHome(g) === posto ? ' attivo' : ''),
+          textContent: POSTI_HOME[posto],
+          onclick: () => cambiaPostoInHome(g.nome, posto),
+        })))))),
     el('section', { className: 'impostazione' },
       el('h3', { textContent: '✨ Calcolo del benessere' }),
       el('p', { className: 'nota', textContent: 'Il benessere di un giorno è la media dei voti da 1 a 9 segnati quel giorno. Qui scegli quanto conta ognuno: 0 non conta, 1 normale, 2 il doppio, 3 il triplo.' }),

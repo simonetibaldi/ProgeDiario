@@ -377,7 +377,10 @@ button { cursor: pointer; }
 .riquadro-valore.tinta { color: var(--tinta); }
 
 /* Colonne del benessere degli ultimi giorni */
-.grafico { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; width: 100%; margin-top: 10px; }
+.grafico { display: grid; grid-template-columns: repeat(var(--colonne, 7), minmax(0, 1fr)); gap: 6px; width: 100%; margin-top: 10px; }
+.grafico.fitto { gap: 2px; }
+.grafico.fitto .grafico-colonna, .grafico.fitto .grafico-spazio { border-radius: 2px; }
+.grafico-data { white-space: nowrap; }
 .grafico-giorno { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
 .grafico-numero { font-size: 11px; color: var(--testo-tenue); min-height: 1.3em; }
 .grafico-spazio {
@@ -946,3 +949,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
   font-size: 26px;
 }
 .blocco-tasti button:active { background: var(--bordo); }
+
+/* Home per periodo */
+.home-periodi { display: flex; gap: 8px; }
+.home-periodi .chip.attivo { background: var(--accento); color: var(--accento-testo); }
+.benessere-righe { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px; border-top: 1px solid var(--bordo); padding-top: 10px; }
+.benessere-riga { display: grid; grid-template-columns: minmax(0, 1fr) auto 4.5em; align-items: baseline; gap: 10px; font-size: 15px; }
+.benessere-riga-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.benessere-riga-freccia { font-size: 12px; color: var(--testo-tenue); text-align: right; }
+.riquadro-voce { font-size: 13px; color: var(--testo-tenue); }
+.home-piede { margin: 8px 0 0; font-size: 13px; color: var(--testo-tenue); text-align: center; }
