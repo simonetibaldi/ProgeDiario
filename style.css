@@ -959,3 +959,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .benessere-riga-freccia { font-size: 12px; color: var(--testo-tenue); text-align: right; }
 .riquadro-voce { font-size: 13px; color: var(--testo-tenue); }
 .home-piede { margin: 8px 0 0; font-size: 13px; color: var(--testo-tenue); text-align: center; }
+
+/* Gruppi dentro un altro gruppo (conteggi dentro Vizi...) e i pulsanti per aggiungere in Modifica */
+.gruppo-dentro { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--bordo); }
+.gruppo-aggiungi { margin-top: 8px; }

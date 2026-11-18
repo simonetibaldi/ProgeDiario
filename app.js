@@ -602,6 +602,8 @@ const sezioniAttuali = () => (impostazioniGruppi && impostazioniGruppi.sezioni) 
 
 // La sezione scelta dall'app; per i gruppi mai spostati, una pensata a partire dal tipo.
 function sezioneDi(gruppo) {
+  const genitore = genitoreDi(gruppo);
+  if (genitore) return sezioneDi(genitore);
   const sezioni = sezioniAttuali();
   if (sezioni.includes(gruppo.sezione)) return gruppo.sezione;
   const proposta = gruppo.nome === GRUPPO_UMORE || (gruppo.tipo === 'scala' && gruppo.nome !== 'Sonno') ? 'Salute mentale'
@@ -609,6 +611,14 @@ function sezioneDi(gruppo) {
     : gruppo.nome === 'Hobby' ? 'Attività'
     : SEZIONE_ALTRO;
   return sezioni.includes(proposta) ? proposta : SEZIONE_ALTRO;
+}
+
+// Un gruppo può stare dentro un altro (`dentro`: il suo nome), per esempio dei conteggi dentro
+// Vizi: si vede nel riquadro dell'altro, ma nei dati resta un gruppo a sé. Un livello solo: se
+// l'altro non c'è più, o sta a sua volta dentro un gruppo, torna a stare da solo.
+function genitoreDi(gruppo) {
+  if (!gruppo.dentro || gruppo.dentro === gruppo.nome) return null;
+  return gruppiAttuali().find((g) => g.nome === gruppo.dentro && !g.dentro) || null;
 }
 
 // Il gruppo Umore si chiama così nei dati (ci sono legati i ricordi), ma si mostra così.
@@ -909,7 +919,8 @@ function aggiungiOpzione(data, nomeGruppo) {
 }
 
 // tipo: undefined (a scelte), 'scala' o 'conteggio'
-function nuovoGruppo(tipo) {
+// dentro: il nome del gruppo in cui sta il nuovo (facoltativo)
+function nuovoGruppo(tipo, dentro) {
   const nome = chiediNome(tipo === 'scala' ? 'Nome del nuovo gruppo di voti da 1 a 9' : tipo === 'conteggio' ? 'Cosa vuoi contare?' : 'Nome del nuovo gruppo');
   if (!nome) return;
   if (gruppiAttuali().some((g) => stessoNome(g.nome, nome))) {
@@ -930,7 +941,7 @@ function nuovoGruppo(tipo) {
     const opzione = maiuscolaIniziale(grezza.trim().replace(/\s+/g, ' '));
     if (opzione && !opzioni.some((o) => stessoNome(o, opzione))) opzioni.push(opzione);
   }
-  salvaGruppi([...gruppiAttuali(), tipo ? { nome, tipo, opzioni, estremi: {} } : { nome, opzioni }]);
+  salvaGruppi([...gruppiAttuali(), { ...(tipo ? { nome, tipo, opzioni, estremi: {} } : { nome, opzioni }), ...(dentro ? { dentro } : {}) }]);
 }
 
 // Una voce in più in un gruppo di slider o di conteggi. In un gruppo di slider può essere
@@ -945,6 +956,36 @@ function aggiungiVoce(gruppo, numero = false) {
 }
 
 const eNumero = (gruppo, voce) => (gruppo.numeri || []).includes(voce);
+
+// In Modifica ogni gruppo ha gli stessi pulsanti per aggiungere: un'opzione, un voto, un numero,
+// un conteggio. Se è del tipo del gruppo diventa una sua voce; altrimenti nasce un gruppo nuovo
+// che sta dentro questo (o dentro il suo, se questo sta già dentro un altro).
+//   cosa: 'opzione', 'voto', 'numero' o 'conteggio'
+function aggiungiDentro(gruppo, cosa) {
+  const tipo = { opzione: undefined, voto: 'scala', numero: 'scala', conteggio: 'conteggio' }[cosa];
+  if (cosa === 'opzione' && !gruppo.tipo) return aggiungiOpzioneAlGruppo(gruppo.nome);
+  if (cosa !== 'opzione' && gruppo.tipo === tipo) return aggiungiVoce(gruppo, cosa === 'numero');
+  const dentro = (genitoreDi(gruppo) || gruppo).nome;
+  if (cosa === 'opzione') return nuovoGruppo(undefined, dentro);
+  const nome = chiediNome({
+    voto: `Cosa votare in ${gruppo.nome}?`,
+    numero: `Che numero scrivere in ${gruppo.nome}? (per esempio Ore dormite)`,
+    conteggio: `Cosa contare in ${gruppo.nome}?`,
+  }[cosa]);
+  if (!nome) return;
+  if (gruppiAttuali().some((g) => stessoNome(g.nome, nome))) {
+    alert(`C'è già un gruppo che si chiama ${nome}.`);
+    return;
+  }
+  salvaGruppi([...gruppiAttuali(), { nome, tipo, opzioni: [nome], ...(cosa === 'numero' ? { numeri: [nome] } : {}), dentro }]);
+}
+
+// Un'opzione nuova nel gruppo, senza segnarla in nessun giorno (in Modifica).
+function aggiungiOpzioneAlGruppo(nomeGruppo) {
+  const nome = chiediNome(`Nuova opzione per ${nomeGruppo}`);
+  if (!nome) return;
+  cambiaGruppo(nomeGruppo, (g) => (g.opzioni.some((o) => stessoNome(o, nome)) ? g : { ...g, opzioni: [...g.opzioni, nome] }));
+}
 
 // Le parole dei 9 punti di uno slider ('' dove non c'è). I gruppi fatti prima delle parole
 // avevano solo `estremi`, cioè le parole di 1 e di 9.
@@ -977,7 +1018,7 @@ function converti(nomeGruppo, tipo) {
     ? `${nomeGruppo} diventa un numero da contare. Le sue opzioni spariscono e nei giorni già segnati vale 1, da correggere a mano.`
     : `${nomeGruppo} diventa un voto da 1 a 9. Le sue opzioni spariscono; nei giorni già segnati resta scritto cosa avevi scelto, finché non scegli un numero.`;
   if (!confirm(avviso)) return;
-  cambiaGruppo(nomeGruppo, (g) => ({ nome: g.nome, tipo, opzioni: [g.nome], ...(g.sezione ? { sezione: g.sezione } : {}) }));
+  cambiaGruppo(nomeGruppo, (g) => ({ nome: g.nome, tipo, opzioni: [g.nome], ...(g.sezione ? { sezione: g.sezione } : {}), ...(g.dentro ? { dentro: g.dentro } : {}) }));
 }
 
 // Un gruppo di voti passa a un'altra scala: si scrive "da, a, normale" (per esempio -1, 2, 0).
@@ -1092,11 +1133,20 @@ function apriOChiudi(insieme, nome) {
 // In Modifica, sotto il nome del gruppo: dove sta, in cosa si trasforma, e come toglierlo.
 function disegnaComandiGruppo(gruppo) {
   const inElenco = gruppiAttuali().some((g) => g.nome === gruppo.nome);
+  // Dove sta: in una sezione, o dentro un altro gruppo (uno che non sta già dentro un altro,
+  // e solo se questo non ne contiene a sua volta).
+  const haDentro = gruppiAttuali().some((g) => g.dentro === gruppo.nome);
+  const ospiti = haDentro ? [] : gruppiAttuali().filter((g) => g.nome !== gruppo.nome && !genitoreDi(g));
   const sezione = el('select', {
-    ariaLabel: 'Sezione',
-    onchange: (e) => cambiaGruppo(gruppo.nome, (g) => ({ ...g, sezione: e.target.value })),
-  }, ...[...sezioniAttuali(), SEZIONE_ALTRO].map((s) => el('option', { value: s, textContent: 'In ' + s })));
-  sezione.value = sezioneDi(gruppo);
+    ariaLabel: 'Dove sta',
+    onchange: (e) => {
+      const [tipo, nome] = [e.target.value[0], e.target.value.slice(2)];
+      cambiaGruppo(gruppo.nome, ({ dentro, ...g }) => (tipo === 'g' ? { ...g, dentro: nome } : { ...g, sezione: nome }));
+    },
+  }, ...[...sezioniAttuali(), SEZIONE_ALTRO].map((s) => el('option', { value: 's:' + s, textContent: 'In ' + s })),
+  ...ospiti.map((g) => el('option', { value: 'g:' + g.nome, textContent: 'Dentro ' + nomeMostrato(g) })));
+  const genitore = genitoreDi(gruppo);
+  sezione.value = genitore ? 'g:' + genitore.nome : 's:' + sezioneDi(gruppo);
   const pulsante = (testo, azione) => el('button', { type: 'button', className: 'btn-testo', textContent: testo, onclick: azione });
   const aScelte = !gruppo.tipo && gruppo.nome !== GRUPPO_UMORE;
   const scala = pulsante('Scala: ' + descriviScala(gruppo), () => cambiaScala(gruppo.nome).catch(mostraErrore));
@@ -1109,12 +1159,23 @@ function disegnaComandiGruppo(gruppo) {
     pulsante('Togli gruppo', () => togliGruppo(gruppo.nome)));
 }
 
-function disegnaGruppo(data, gruppo, scelte) {
+// In Modifica, in fondo a ogni gruppo: gli stessi pulsanti per tutti (vedi aggiungiDentro).
+function disegnaAggiungi(gruppo) {
+  if (!gruppiAttuali().some((g) => g.nome === gruppo.nome) || gruppo.nome === GRUPPO_UMORE) return '';
+  const aggiungi = (testo, cosa) => el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: testo, onclick: () => aggiungiDentro(gruppo, cosa) });
+  return el('div', { className: 'chips gruppo-aggiungi' },
+    aggiungi('+ Opzione', 'opzione'), aggiungi('+ Voto', 'voto'), aggiungi('+ Numero', 'numero'), aggiungi('+ Conteggio', 'conteggio'));
+}
+
+// figli: i gruppi che stanno dentro questo, disegnati nel suo riquadro dopo le sue voci.
+function disegnaGruppo(data, gruppo, scelte, figli = []) {
   // Le scelte da chiuse stanno su una riga; slider e conteggi sono sempre aperti (li chiude la sezione).
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || !!gruppo.tipo;
   const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudi(gruppiAperti, gruppo.nome) });
   // Un gruppo con uno slider solo che si chiama come lui (Libido) non ripete il nome: basta la riga.
-  const soloSlider = !modificaGruppi && gruppo.tipo === 'scala' && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome;
+  // Lo stesso per un gruppo dentro un altro con una voce sola che si chiama come lui.
+  const soloSlider = !modificaGruppi && !!gruppo.tipo && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome
+    && (gruppo.tipo === 'scala' || !!genitoreDi(gruppo));
   const testa = soloSlider ? '' : el('div', { className: 'gruppo-testa' }, titoloConIcona('h3', gruppo.nome, nomeMostrato(gruppo)));
   if (!modificaGruppi && !gruppo.tipo) testa.append(freccia);
   const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte)
@@ -1124,9 +1185,12 @@ function disegnaGruppo(data, gruppo, scelte) {
     className: `gruppo gruppo-${gruppo.tipo || 'scelte'}${aperto ? '' : ' chiuso'}`,
     // Toccare il gruppo fuori dai pulsanti fa lo stesso della freccia.
     onclick: (e) => {
-      if (!modificaGruppi && freccia.isConnected && !freccia.hidden && !e.target.closest('button')) apriOChiudi(gruppiAperti, gruppo.nome);
+      if (!modificaGruppi && freccia.isConnected && !freccia.hidden && !e.target.closest('button')
+        && e.target.closest('.gruppo') === e.currentTarget) apriOChiudi(gruppiAperti, gruppo.nome);
     },
-  }, testa, modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto);
+  }, testa, modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto,
+  modificaGruppi ? disegnaAggiungi(gruppo) : '',
+  figli.length ? el('div', { className: 'gruppo-dentro' }, ...figli.map((f) => disegnaGruppo(data, f, scelte))) : '');
 }
 
 function disegnaScelte(data, gruppo, scelte, aperto) {
@@ -1157,8 +1221,6 @@ function disegnaScelte(data, gruppo, scelte, aperto) {
 
 // In Modifica: le voci di un gruppo di slider o di conteggi, da togliere o aggiungere.
 function disegnaVociInModifica(gruppo) {
-  const inElenco = gruppiAttuali().some((g) => g.nome === gruppo.nome);
-  const aggiungi = (testo, numero) => el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: testo, onclick: () => aggiungiVoce(gruppo, numero) });
   return el('div', { className: 'voci' },
     ...gruppo.opzioni.map((voce) => el('div', { className: 'voce' },
       titoloConIcona('span', voce, voce + (eNumero(gruppo, voce) ? ' (numero)' : ''), { className: 'voce-nome' }),
@@ -1166,10 +1228,6 @@ function disegnaVociInModifica(gruppo) {
         ? el('button', { type: 'button', className: 'btn-testo', textContent: 'Parole', ariaLabel: 'Le parole dei punti da 1 a 9', onclick: () => cambiaParole(gruppo.nome, voce) })
         : '',
       el('button', { type: 'button', className: 'btn-testo', textContent: '×', ariaLabel: 'Togli', onclick: () => togliOpzione(gruppo.nome, voce) }))),
-    inElenco
-      ? el('div', { className: 'chips' },
-        ...(gruppo.tipo === 'scala' ? [aggiungi('+ Voto 1–9', false), aggiungi('+ Numero', true)] : [aggiungi('+ Aggiungi', false)]))
-      : '',
   );
 }
 
@@ -1317,7 +1375,8 @@ function disegnaSezione(data, nome, gruppiSezione, scelte, posizione) {
     },
   }, testa,
     ...(aperta
-      ? gruppiSezione.map((g) => disegnaGruppo(data, g, scelte))
+      ? gruppiSezione.filter((g) => !genitoreDi(g))
+        .map((g) => disegnaGruppo(data, g, scelte, gruppiSezione.filter((f) => genitoreDi(f) && genitoreDi(f).nome === g.nome)))
       : [el('p', { className: 'sezione-riassunto', textContent: riassunto || 'Niente segnato' })]));
 }
 
@@ -1377,8 +1436,8 @@ function disegnaOggi() {
 
   // La freccia serve solo se le opzioni non stanno in una riga: lo si sa dopo averle disegnate.
   for (const gruppo of $('pagina-oggi').querySelectorAll('.gruppo-scelte.chiuso')) {
-    const chips = gruppo.querySelector('.chips');
-    gruppo.querySelector('.gruppo-freccia').hidden = chips.scrollHeight <= chips.clientHeight + 1;
+    const chips = gruppo.querySelector(':scope > .chips');
+    gruppo.querySelector(':scope > .gruppo-testa > .gruppo-freccia').hidden = chips.scrollHeight <= chips.clientHeight + 1;
   }
 }
 
