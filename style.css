@@ -147,7 +147,7 @@ button { cursor: pointer; }
 }
 .gruppo .chip.attivo { background: var(--colore); }
 /* Da chiuso si vede una riga sola di opzioni */
-.gruppo.chiuso .chips { max-height: 34px; overflow: hidden; }
+.gruppo.chiuso > .gruppo-corpo > .chips { max-height: 34px; overflow: hidden; }
 .gruppo-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin-bottom: 6px; }
 .gruppo-testa h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--colore); text-transform: uppercase; letter-spacing: 0.04em; }
 .gruppo-freccia { padding: 0 6px; color: var(--colore); }
@@ -960,6 +960,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .riquadro-voce { font-size: 13px; color: var(--testo-tenue); }
 .home-piede { margin: 8px 0 0; font-size: 13px; color: var(--testo-tenue); text-align: center; }
 
-/* Gruppi dentro un altro gruppo (conteggi dentro Vizi...) e i pulsanti per aggiungere in Modifica */
-.gruppo-dentro { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--bordo); }
+/* Sotto il nome di un gruppo, una linea a sinistra lega le sue voci e i gruppi che stanno dentro */
+.gruppo-dentro { margin-top: 10px; }
+.gruppo-corpo.con-nome { padding-left: 12px; border-left: 2px solid var(--bordo); }
 .gruppo-aggiungi { margin-top: 8px; }

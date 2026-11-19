@@ -1159,6 +1159,16 @@ function disegnaComandiGruppo(gruppo) {
     pulsante('Togli gruppo', () => togliGruppo(gruppo.nome)));
 }
 
+// Fuori da Modifica ogni gruppo ha un "+" per aggiungere al volo una cosa del suo tipo: nei gruppi
+// a scelte sta tra le opzioni (disegnaScelte, e l'opzione nuova si segna subito), negli altri qui
+// sotto: un voto, un conteggio, o un numero se il gruppo ha solo numeri (Ore dormite).
+function disegnaAggiungiAlVolo(gruppo) {
+  if (!gruppo.tipo || !gruppiAttuali().some((g) => g.nome === gruppo.nome)) return '';
+  const cosa = gruppo.tipo === 'conteggio' ? 'conteggio' : gruppo.opzioni.every((v) => eNumero(gruppo, v)) ? 'numero' : 'voto';
+  return el('div', { className: 'chips gruppo-aggiungi' },
+    el('button', { type: 'button', className: 'chip chip-aggiungi', textContent: '+', ariaLabel: 'Aggiungi a ' + gruppo.nome, onclick: () => aggiungiDentro(gruppo, cosa) }));
+}
+
 // In Modifica, in fondo a ogni gruppo: gli stessi pulsanti per tutti (vedi aggiungiDentro).
 function disegnaAggiungi(gruppo) {
   if (!gruppiAttuali().some((g) => g.nome === gruppo.nome) || gruppo.nome === GRUPPO_UMORE) return '';
@@ -1172,15 +1182,14 @@ function disegnaGruppo(data, gruppo, scelte, figli = []) {
   // Le scelte da chiuse stanno su una riga; slider e conteggi sono sempre aperti (li chiude la sezione).
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || !!gruppo.tipo;
   const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudi(gruppiAperti, gruppo.nome) });
-  // Un gruppo con uno slider solo che si chiama come lui (Libido) non ripete il nome: basta la riga.
-  // Lo stesso per un gruppo dentro un altro con una voce sola che si chiama come lui.
-  const soloSlider = !modificaGruppi && !!gruppo.tipo && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome
-    && (gruppo.tipo === 'scala' || !!genitoreDi(gruppo));
+  // Un gruppo con una voce sola che si chiama come lui (Libido, Alcool) non ripete il nome: basta la riga.
+  const soloSlider = !modificaGruppi && !!gruppo.tipo && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome;
   const testa = soloSlider ? '' : el('div', { className: 'gruppo-testa' }, titoloConIcona('h3', gruppo.nome, nomeMostrato(gruppo)));
   if (!modificaGruppi && !gruppo.tipo) testa.append(freccia);
   const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte)
     : gruppo.tipo === 'conteggio' ? disegnaConteggi(data, gruppo, scelte)
     : disegnaScelte(data, gruppo, scelte, aperto);
+  const corpo = corpoDelGruppo(data, gruppo, scelte, figli, contenuto, !!testa);
   return el('div', {
     className: `gruppo gruppo-${gruppo.tipo || 'scelte'}${aperto ? '' : ' chiuso'}`,
     // Toccare il gruppo fuori dai pulsanti fa lo stesso della freccia.
@@ -1188,9 +1197,16 @@ function disegnaGruppo(data, gruppo, scelte, figli = []) {
       if (!modificaGruppi && freccia.isConnected && !freccia.hidden && !e.target.closest('button')
         && e.target.closest('.gruppo') === e.currentTarget) apriOChiudi(gruppiAperti, gruppo.nome);
     },
-  }, testa, modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto,
-  modificaGruppi ? disegnaAggiungi(gruppo) : '',
-  figli.length ? el('div', { className: 'gruppo-dentro' }, ...figli.map((f) => disegnaGruppo(data, f, scelte))) : '');
+  }, testa, corpo);
+}
+
+// Quello che sta sotto il nome di un gruppo ha a sinistra una linea che lo lega al nome (vedi
+// .gruppo-corpo); un gruppo senza nome (una voce sola, che si chiama come lui) non ce l'ha.
+function corpoDelGruppo(data, gruppo, scelte, figli, contenuto, conNome) {
+  return el('div', { className: 'gruppo-corpo' + (conNome ? ' con-nome' : '') },
+    modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto,
+    modificaGruppi ? disegnaAggiungi(gruppo) : disegnaAggiungiAlVolo(gruppo),
+    figli.length ? el('div', { className: 'gruppo-dentro' }, ...figli.map((f) => disegnaGruppo(data, f, scelte))) : '');
 }
 
 function disegnaScelte(data, gruppo, scelte, aperto) {
@@ -1436,7 +1452,7 @@ function disegnaOggi() {
 
   // La freccia serve solo se le opzioni non stanno in una riga: lo si sa dopo averle disegnate.
   for (const gruppo of $('pagina-oggi').querySelectorAll('.gruppo-scelte.chiuso')) {
-    const chips = gruppo.querySelector(':scope > .chips');
+    const chips = gruppo.querySelector(':scope > .gruppo-corpo > .chips');
     gruppo.querySelector(':scope > .gruppo-testa > .gruppo-freccia').hidden = chips.scrollHeight <= chips.clientHeight + 1;
   }
 }
