@@ -1671,6 +1671,7 @@ function statistiche(giorni) {
   // uno in cui non si è segnato niente resta vuoto (undefined).
   s.benessere = riassunti.map((r, i) => benessereDi(r) ?? (giornataPiena(giornataDel(giorni[i])) ? 0 : undefined));
   const delPeriodo = posts.filter((p) => p.data >= giorni[0] && p.data <= giorni[giorni.length - 1]);
+  s.compilati = giorni.filter((d) => giornataPiena(giornataDel(d))).length; // i giorni con qualcosa segnato in Oggi
   s.registrati = giorni.filter((d) => giornataPiena(giornataDel(d)) || delPeriodo.some((p) => p.data === d)).length;
   s.ricordi = delPeriodo.filter((p) => !p.raccolta).length;
   s.archivio = delPeriodo.length - s.ricordi;
@@ -1678,6 +1679,17 @@ function statistiche(giorni) {
   return s;
 }
 const mediaSe = (valori) => (valori && valori.length ? media(valori) : undefined);
+
+// La media dei voti di un gruppo nel periodo. Come nel benessere, un voto non segnato in un giorno
+// in cui si è segnato qualcosa vale il normale (Salute: 0 = in salute), quindi la media è su tutti
+// quei giorni, non solo su quelli in cui il voto è stato toccato. Senza normale, solo i segnati.
+function mediaDelGruppo(s, gruppo) {
+  const segnati = s.voti.get(gruppo.nome) || [];
+  const zero = normaleDi(gruppo);
+  const quanti = s.compilati * gruppo.opzioni.filter((v) => !eNumero(gruppo, v)).length;
+  if (zero === undefined || quanti < segnati.length) return mediaSe(segnati);
+  return quanti ? (segnati.reduce((a, b) => a + b, 0) + zero * (quanti - segnati.length)) / quanti : undefined;
+}
 const benessereMedio = (s) => mediaSe(s.benessere.filter((v) => v !== undefined));
 
 // "↑ 0,4" rispetto al periodo prima; niente se prima non c'era.
@@ -1774,8 +1786,8 @@ function disegnaHome() {
   const numero = settimana ? s.benessere[s.benessere.length - 1] : benessereMedio(s);
   const righe = [];
   for (const g of gruppi.filter((g) => postoInHome(g) === 'benessere')) {
-    const v = mediaSe(s.voti.get(g.nome));
-    if (v !== undefined) righe.push(rigaBenessere(iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome), nomeDeiVoti(g), v, mostraSuScala(v, g), suNove(v, g), mediaSe(prima.voti.get(g.nome))));
+    const v = mediaDelGruppo(s, g);
+    if (v !== undefined) righe.push(rigaBenessere(iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome), nomeDeiVoti(g), v, mostraSuScala(v, g), suNove(v, g), mediaDelGruppo(prima, g)));
     for (const voce of g.opzioni.filter((x) => eNumero(g, x))) {
       const n = mediaSe(s.numeri.get(voce));
       if (n !== undefined) righe.push(rigaBenessere(iconaDi(voce), voce, n, scriviVoto(n), undefined, mediaSe(prima.numeri.get(voce))));
@@ -1795,14 +1807,14 @@ function disegnaHome() {
   const riquadri = [];
   for (const g of gruppi.filter((g) => postoInHome(g) === 'riquadro')) {
     if (g.tipo === 'scala') {
-      const v = mediaSe(s.voti.get(g.nome));
+      const v = mediaDelGruppo(s, g);
       if (v !== undefined) {
         riquadri.push(riquadro({
           icona: iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome),
           nome: nomeDeiVoti(g),
           valore: mostraSuScala(v, g),
           voto: suNove(v, g),
-          nota: ['in media', scalaScritta(g), freccia(v, mediaSe(prima.voti.get(g.nome)))].filter(Boolean).join(' · '),
+          nota: ['in media', scalaScritta(g), freccia(v, mediaDelGruppo(prima, g))].filter(Boolean).join(' · '),
         }));
       }
       for (const voce of g.opzioni.filter((x) => eNumero(g, x))) {
