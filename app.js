@@ -541,22 +541,29 @@ const eScalaBase = (scala) => minimoDi(scala) === 1 && massimoDi(scala) === 9 &&
 // "−1", "+2" sulle scale che vanno sotto lo zero; altrimenti il numero com'è.
 const scriviSuScala = (n, scala) => (minimoDi(scala) < 0 && n > 0 ? '+' : '') + numeroLeggibile(Math.round(n * 10) / 10).replace('-', '−');
 const descriviScala = (scala) => `da ${scriviSuScala(minimoDi(scala), scala)} a ${scriviSuScala(massimoDi(scala), scala)}`
-  + (conNormale(scala) ? `, normale ${scriviSuScala(scala.normale, scala)}` : '');
+  + (conNormale(scala) ? `, normale ${scriviSuScala(scala.normale, scala)}` : '')
+  + (scala.contrario ? ', al contrario' : '');
 
 // Un voto riportato da 1 a 9, per benessere e colori: il minimo vale 1 e il massimo 9. Con un
 // normale scelto, quello vale 5 e il resto va in proporzione da ciascuna parte (Libido: -1 → 1,
 // 0 → 5, 1 → 7, 2 → 9); senza, in proporzione su tutta la scala.
+// Una scala `contrario` (Ansia da 0 a 3: più è alta, peggio è) si legge rovesciata: 0 → 5, 3 → 1.
 function suNove(n, scala) {
   const [min, max] = [minimoDi(scala), massimoDi(scala)];
-  if (!conNormale(scala)) return Math.min(9, Math.max(1, 1 + ((n - min) * 8) / (max - min)));
-  const normale = scala.normale;
-  const v = n <= normale
-    ? (normale === min ? 5 : 1 + ((n - min) * 4) / (normale - min))
-    : (normale === max ? 5 : 5 + ((n - normale) * 4) / (max - normale));
+  let v;
+  if (!conNormale(scala)) v = 1 + ((n - min) * 8) / (max - min);
+  else {
+    const normale = scala.normale;
+    v = n <= normale
+      ? (normale === min ? 5 : 1 + ((n - min) * 4) / (normale - min))
+      : (normale === max ? 5 : 5 + ((n - normale) * 4) / (max - normale));
+  }
+  if (scala.contrario) v = 10 - v;
   return Math.min(9, Math.max(1, v));
 }
 // Al contrario: da 1–9 a un numero intero della scala (per i voti dell'archivio e per cambiare scala).
 function daNove(v, scala) {
+  if (scala.contrario) v = 10 - v;
   const [min, max] = [minimoDi(scala), massimoDi(scala)];
   let n;
   if (!conNormale(scala)) n = min + ((v - 1) * (max - min)) / 8;
@@ -1153,6 +1160,10 @@ function disegnaComandiGruppo(gruppo) {
   return el('div', { className: 'gruppo-comandi' },
     inElenco ? sezione : '',
     inElenco && gruppo.tipo === 'scala' && gruppo.opzioni.some((v) => !eNumero(gruppo, v)) ? scala : '',
+    // Più alto è peggio (Ansia): cambia solo colori e benessere, i voti segnati restano.
+    inElenco && gruppo.tipo === 'scala' && gruppo.opzioni.some((v) => !eNumero(gruppo, v))
+      ? pulsante(gruppo.contrario ? 'Più alto = peggio' : 'Più alto = meglio', () => cambiaGruppo(gruppo.nome, ({ contrario, ...g }) => (contrario ? g : { ...g, contrario: true })))
+      : '',
     aScelte ? pulsante('Diventa voto 1–9', () => converti(gruppo.nome, 'scala')) : '',
     aScelte ? pulsante('Diventa conteggio', () => converti(gruppo.nome, 'conteggio')) : '',
     !gruppo.tipo && inElenco ? pulsante('Unisci opzioni', () => unisciOpzioni(gruppo.nome)) : '',
