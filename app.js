@@ -540,6 +540,16 @@ const scalaDi = (scala) => Array.from({ length: massimoDi(scala) - minimoDi(scal
 const eScalaBase = (scala) => minimoDi(scala) === 1 && massimoDi(scala) === 9 && normaleDi(scala) === 5;
 // "−1", "+2" sulle scale che vanno sotto lo zero; altrimenti il numero com'è.
 const scriviSuScala = (n, scala) => (minimoDi(scala) < 0 && n > 0 ? '+' : '') + numeroLeggibile(Math.round(n * 10) / 10).replace('-', '−');
+// Come si legge un voto di un gruppo: rispetto al suo normale, così sotto il normale è negativo
+// (da 1 a 5 con normale 3: −2, −1, 0, +1, +2; Felicità da −4 a +4). Restano come sono le scale al
+// contrario (Ansia da 0 a 3) e i voti fuori dai gruppi (archivio, sempre da 1 a 9). Nei dati e nel
+// pulsante "Scala: …" i numeri restano quelli veri.
+function mostraSuScala(n, scala) {
+  const zero = normaleDi(scala);
+  if (scala.tipo !== 'scala' || scala.contrario || zero === undefined || zero === 0) return scriviSuScala(n, scala);
+  const d = Math.round((n - zero) * 10) / 10;
+  return (d > 0 ? '+' : '') + numeroLeggibile(d).replace('-', '−');
+}
 const descriviScala = (scala) => `da ${scriviSuScala(minimoDi(scala), scala)} a ${scriviSuScala(massimoDi(scala), scala)}`
   + (conNormale(scala) ? `, normale ${scriviSuScala(scala.normale, scala)}` : '')
   + (scala.contrario ? ', al contrario' : '');
@@ -627,6 +637,20 @@ function genitoreDi(gruppo) {
   if (!gruppo.dentro || gruppo.dentro === gruppo.nome) return null;
   return gruppiAttuali().find((g) => g.nome === gruppo.dentro && !g.dentro) || null;
 }
+
+const figliDi = (gruppo) => gruppiAttuali().filter((f) => genitoreDi(f) && genitoreDi(f).nome === gruppo.nome);
+
+// Un gruppo dentro un altro con una voce sola che si chiama come lui (Libido dentro Attività
+// sessuale, Alcool dentro Vizi) si mostra e si cambia come una voce dell'altro: nei dati resta
+// un gruppo solo perché ha un tipo o una scala diversi.
+const eVoceDentro = (gruppo) => !!gruppo.tipo && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome && !!genitoreDi(gruppo);
+
+// Il nome di una voce sulla sua riga; vuoto in un gruppo principale con una voce sola che si
+// chiama come lui (Relax), dove il nome c'è già nel titolo.
+const nomeSullaRiga = (gruppo, voce) => (gruppo.opzioni.length === 1 && voce === gruppo.nome && !genitoreDi(gruppo) ? '' : conIcona(voce));
+
+// I gruppi in ordine: ogni principale seguito da quelli che ha dentro (per le Impostazioni).
+const gruppiInOrdine = () => gruppiAttuali().filter((g) => !genitoreDi(g)).flatMap((g) => [g, ...figliDi(g)]);
 
 // Il gruppo Umore si chiama così nei dati (ci sono legati i ricordi), ma si mostra così.
 const nomeMostrato = (gruppo) => (gruppo.nome === GRUPPO_UMORE ? 'Umore generale' : gruppo.nome);
@@ -1008,7 +1032,7 @@ function paroleDi(gruppo, voce) {
 // "Distrutto / / / / Normale / / / / Riposatissimo". Con due parole sole sono 1 e 9.
 function cambiaParole(nomeGruppo, voce) {
   const gruppo = gruppiAttuali().find((g) => g.nome === nomeGruppo);
-  const numeri = scalaDi(gruppo).map((n) => scriviSuScala(n, gruppo));
+  const numeri = scalaDi(gruppo).map((n) => mostraSuScala(n, gruppo));
   const quante = numeri.length;
   const scritte = prompt(`${voce}: le parole per ${numeri.join(', ')}, separate da /. Con due parole sole valgono per ${numeri[0]} e ${numeri[quante - 1]}.`, paroleDi(gruppo, voce).join(' / '));
   if (scritte === null) return;
@@ -1106,7 +1130,7 @@ function togliOpzione(nomeGruppo, opzione) {
 }
 
 function togliGruppo(nomeGruppo) {
-  if (!confirm(`Togliere il gruppo ${nomeGruppo}? I giorni già segnati restano com'erano.`)) return;
+  if (!confirm(`Togliere ${nomeGruppo}? I giorni già segnati restano com'erano.`)) return;
   salvaGruppi(gruppiAttuali().filter((g) => g.nome !== nomeGruppo));
 }
 
@@ -1160,9 +1184,8 @@ function disegnaComandiGruppo(gruppo) {
   return el('div', { className: 'gruppo-comandi' },
     inElenco ? sezione : '',
     inElenco && gruppo.tipo === 'scala' && gruppo.opzioni.some((v) => !eNumero(gruppo, v)) ? scala : '',
-    // Più alto è peggio (Ansia): cambia solo colori e benessere, i voti segnati restano.
     inElenco && gruppo.tipo === 'scala' && gruppo.opzioni.some((v) => !eNumero(gruppo, v))
-      ? pulsante(gruppo.contrario ? 'Più alto = peggio' : 'Più alto = meglio', () => cambiaGruppo(gruppo.nome, ({ contrario, ...g }) => (contrario ? g : { ...g, contrario: true })))
+      ? pulsante(gruppo.contrario ? 'Più alto = peggio' : 'Più alto = meglio', () => alternaContrario(gruppo.nome))
       : '',
     aScelte ? pulsante('Diventa voto 1–9', () => converti(gruppo.nome, 'scala')) : '',
     aScelte ? pulsante('Diventa conteggio', () => converti(gruppo.nome, 'conteggio')) : '',
@@ -1193,14 +1216,14 @@ function disegnaGruppo(data, gruppo, scelte, figli = []) {
   // Le scelte da chiuse stanno su una riga; slider e conteggi sono sempre aperti (li chiude la sezione).
   const aperto = modificaGruppi || gruppiAperti.has(gruppo.nome) || !!gruppo.tipo;
   const freccia = el('button', { type: 'button', className: 'btn-testo gruppo-freccia', textContent: aperto ? '▴' : '▾', ariaLabel: 'Mostra o nascondi le opzioni', onclick: () => apriOChiudi(gruppiAperti, gruppo.nome) });
-  // Un gruppo con una voce sola che si chiama come lui (Libido, Alcool) non ripete il nome: basta la riga.
-  const soloSlider = !modificaGruppi && !!gruppo.tipo && gruppo.opzioni.length === 1 && gruppo.opzioni[0] === gruppo.nome;
-  const testa = soloSlider ? '' : el('div', { className: 'gruppo-testa' }, titoloConIcona('h3', gruppo.nome, nomeMostrato(gruppo)));
+  // Un gruppo che fa da voce dell'altro (Libido, Alcool) non ha titolo: è una riga come le voci.
+  if (eVoceDentro(gruppo) && modificaGruppi) return disegnaVoceDentroInModifica(gruppo);
+  const testa = eVoceDentro(gruppo) ? '' : el('div', { className: 'gruppo-testa' }, titoloConIcona('h3', gruppo.nome, nomeMostrato(gruppo)));
   if (!modificaGruppi && !gruppo.tipo) testa.append(freccia);
   const contenuto = gruppo.tipo === 'scala' ? disegnaScale(data, gruppo, scelte)
     : gruppo.tipo === 'conteggio' ? disegnaConteggi(data, gruppo, scelte)
     : disegnaScelte(data, gruppo, scelte, aperto);
-  const corpo = corpoDelGruppo(data, gruppo, scelte, figli, contenuto, !!testa);
+  const corpo = corpoDelGruppo(data, gruppo, scelte, figli, contenuto);
   return el('div', {
     className: `gruppo gruppo-${gruppo.tipo || 'scelte'}${aperto ? '' : ' chiuso'}`,
     // Toccare il gruppo fuori dai pulsanti fa lo stesso della freccia.
@@ -1211,13 +1234,35 @@ function disegnaGruppo(data, gruppo, scelte, figli = []) {
   }, testa, corpo);
 }
 
-// Quello che sta sotto il nome di un gruppo ha a sinistra una linea che lo lega al nome (vedi
-// .gruppo-corpo); un gruppo senza nome (una voce sola, che si chiama come lui) non ce l'ha.
-function corpoDelGruppo(data, gruppo, scelte, figli, contenuto, conNome) {
-  return el('div', { className: 'gruppo-corpo' + (conNome ? ' con-nome' : '') },
+// In Modifica, un gruppo che fa da voce dell'altro: una riga col nome (e la sua icona), la scala,
+// le parole, il verso e la × per toglierlo, come le voci dei gruppi di voti.
+function disegnaVoceDentroInModifica(gruppo) {
+  const pulsante = (testo, azione) => el('button', { type: 'button', className: 'btn-testo', textContent: testo, onclick: azione });
+  const voto = gruppo.tipo === 'scala' && !eNumero(gruppo, gruppo.nome);
+  const tipo = gruppo.tipo === 'conteggio' ? ' (conteggio)' : eNumero(gruppo, gruppo.nome) ? ' (numero)' : '';
+  return el('div', { className: 'voce voce-dentro' },
+    titoloConIcona('span', gruppo.nome, gruppo.nome + tipo, { className: 'voce-nome' }),
+    voto ? pulsante('Scala: ' + descriviScala(gruppo), () => cambiaScala(gruppo.nome).catch(mostraErrore)) : '',
+    voto ? pulsante('Parole', () => cambiaParole(gruppo.nome, gruppo.nome)) : '',
+    voto ? pulsante(gruppo.contrario ? 'Più alto = peggio' : 'Più alto = meglio', () => alternaContrario(gruppo.nome)) : '',
+    el('button', { type: 'button', className: 'btn-testo', textContent: '×', ariaLabel: 'Togli ' + gruppo.nome, onclick: () => togliGruppo(gruppo.nome) }));
+}
+
+// Più alto è peggio (Ansia), o meglio: cambia solo colori e benessere, i voti segnati restano.
+function alternaContrario(nomeGruppo) {
+  cambiaGruppo(nomeGruppo, ({ contrario, ...g }) => (contrario ? g : { ...g, contrario: true }));
+}
+
+// Quello che sta sotto il nome di un gruppo: comandi, voci e gruppi che stanno dentro. Nei gruppi
+// principali ha a sinistra una linea (.gruppo-corpo.principale), in quelli dentro no.
+// I pulsanti per aggiungere ci sono una volta sola, in fondo al gruppo principale (dopo quelli
+// che stanno dentro): quello che si aggiunge da un gruppo dentro finisce comunque nel principale.
+function corpoDelGruppo(data, gruppo, scelte, figli, contenuto) {
+  const principale = !genitoreDi(gruppo);
+  return el('div', { className: 'gruppo-corpo' + (principale ? ' principale' : '') },
     modificaGruppi ? disegnaComandiGruppo(gruppo) : '', contenuto,
-    modificaGruppi ? disegnaAggiungi(gruppo) : disegnaAggiungiAlVolo(gruppo),
-    figli.length ? el('div', { className: 'gruppo-dentro' }, ...figli.map((f) => disegnaGruppo(data, f, scelte))) : '');
+    figli.length ? el('div', { className: 'gruppo-dentro' }, ...figli.map((f) => disegnaGruppo(data, f, scelte))) : '',
+    !principale ? '' : modificaGruppi ? disegnaAggiungi(gruppo) : disegnaAggiungiAlVolo(gruppo));
 }
 
 function disegnaScelte(data, gruppo, scelte, aperto) {
@@ -1265,34 +1310,37 @@ function disegnaVociInModifica(gruppo) {
 //   parole: le parole dei numeri, in ordine ('' dove non c'è): quella scelta compare accanto al nome
 //   scegli(n), togli(): chiamate al tocco
 //   apri(): se c'è, il valore non si cambia qui (viene dall'archivio, da `da`) e toccare apre
-//   scala: { minimo, massimo, normale } (da 1 a 9 se non si dice); la casella del normale è segnata
+//   scala: { minimo, massimo, normale } (da 1 a 9 se non si dice) (non segnato vale come il normale)
 function creaVoto({ nome, valore, parole, scegli, togli, apri, da = '', scala = SCALA_BASE }) {
   const segnato = valore !== undefined && valore !== null; // 0 è un voto vero
   const numeri = scalaDi(scala);
-  const dettaglio = apri ? 'da ' + da : (segnato && parole[valore - minimoDi(scala)]) || '';
+  // Con le parole, nelle caselle si leggono quelle (il numero dove una casella non ne ha), e il
+  // voto scelto compare accanto al nome; senza, i numeri e la parola scelta accanto al nome.
+  const conParole = parole.some(Boolean);
+  const dettaglio = apri ? 'da ' + da : (!conParole && segnato && parole[valore - minimoDi(scala)]) || '';
   return el('div', { className: 'voto' },
     el('div', { className: 'voto-nome' },
       el('span', { textContent: nome }),
       dettaglio ? el('span', { className: 'voto-parola', textContent: dettaglio }) : ''),
     segnato
-      ? el('span', { className: 'voto-valore tinta', style: `--n: ${suNove(valore, scala)}`, textContent: scriviSuScala(valore, scala) + (apri ? ' ↗' : '') })
+      ? el('span', { className: 'voto-valore tinta', style: `--n: ${suNove(valore, scala)}`, textContent: mostraSuScala(valore, scala) + (apri ? ' ↗' : '') })
       : el('span'),
-    el('div', { className: 'voto-caselle', style: `--caselle: ${numeri.length}` }, ...numeri.map((n) => el('button', {
+    el('div', { className: 'voto-caselle' + (conParole ? ' con-parole' : ''), style: `--caselle: ${numeri.length}` }, ...numeri.map((n, i) => el('button', {
       type: 'button',
-      className: 'voto-casella tinta' + (n === valore ? ' scelta' : '') + (conNormale(scala) && n === scala.normale ? ' normale' : ''),
+      className: 'voto-casella tinta' + (n === valore ? ' scelta' : ''),
       style: `--n: ${suNove(n, scala)}`,
-      textContent: scriviSuScala(n, scala),
-      ariaLabel: `${nome}: ${n}`,
+      textContent: (conParole && parole[i]) || mostraSuScala(n, scala),
+      ariaLabel: `${nome}: ${mostraSuScala(n, scala)}${parole[i] ? ' ' + parole[i] : ''}`,
       onclick: apri || (() => (n === valore ? togli() : scegli(n))),
     }))),
-    parole[0] || parole[numeri.length - 1]
+    !conParole && (parole[0] || parole[numeri.length - 1])
       ? el('div', { className: 'scala-estremi' }, el('span', { textContent: parole[0] }), el('span', { textContent: parole[numeri.length - 1] }))
       : '');
 }
 
 function disegnaVoto(data, gruppo, voce, valore, post) {
   return creaVoto({
-    nome: conIcona(voce),
+    nome: nomeSullaRiga(gruppo, voce),
     valore,
     parole: paroleDi(gruppo, voce),
     scala: gruppo,
@@ -1307,7 +1355,7 @@ function disegnaVoto(data, gruppo, voce, valore, post) {
 // Una casella dove si scrive un numero, anche con la virgola (7,5 ore). Vuota toglie il valore.
 function disegnaCasella(data, gruppo, voce, valore) {
   return el('label', { className: 'voce' },
-    el('span', { className: 'voce-nome', textContent: conIcona(voce) }),
+    el('span', { className: 'voce-nome', textContent: nomeSullaRiga(gruppo, voce) }),
     el('input', {
       type: 'text',
       inputMode: 'decimal',
@@ -1345,7 +1393,7 @@ function disegnaScale(data, gruppo, scelte) {
       ? el('button', {
         type: 'button',
         className: 'btn-secondario btn-come-al-solito',
-        textContent: `${vuoti.length === voti.length ? 'Tutto' : 'Gli altri'} come al solito (${scriviSuScala(normaleDi(gruppo), gruppo)})`,
+        textContent: `${vuoti.length === voti.length ? 'Tutto' : 'Gli altri'} come al solito (${mostraSuScala(normaleDi(gruppo), gruppo)})`,
         onclick: () => cambiaValori(data, gruppo, Object.fromEntries(vuoti.map((v) => [v, normaleDi(gruppo)]))),
       })
       : '',
@@ -1358,7 +1406,7 @@ function disegnaConteggi(data, gruppo, scelte) {
   const voci = [...new Set([...gruppo.opzioni, ...Object.keys(valori)])];
   return el('div', { className: 'voci' },
     ...voci.map((v) => el('div', { className: 'voce' },
-      el('span', { className: 'voce-nome', textContent: conIcona(v) }),
+      el('span', { className: 'voce-nome', textContent: nomeSullaRiga(gruppo, v) }),
       el('button', {
         type: 'button',
         className: 'conta-pulsante',
@@ -1473,7 +1521,7 @@ function disegnaOggi() {
 //
 // La pagina che si apre per prima. Mostra un periodo che finisce ieri (oggi è ancora da
 // riempire): gli ultimi 7 giorni, e con un tocco gli ultimi 30 o l'anno; i riquadri restano
-// gli stessi. In cima il benessere (la media pesata di tutti i voti del giorno, vedi
+// gli stessi. In cima il benessere (i punti del giorno rispetto al normale, vedi
 // benessereDi) con le sue colonne e, sotto, le righe dei gruppi che lo compongono; poi un
 // riquadro per ogni gruppo messo "a sé"; in fondo ricordi e giorni registrati. Dove sta ogni
 // gruppo si sceglie in Impostazioni (postoInHome). Regola: un riquadro c'è se risponde a una
@@ -1541,19 +1589,33 @@ function pesoDi(gruppo, voce) {
   return chiave in pesi ? pesi[chiave] : PESO_NORMALE;
 }
 
-// La media pesata di tutti i voti del giorno, riportati da 1 a 9; undefined se non ce n'è nessuno che conta.
+// Il benessere è a punti, senza conversioni: ogni voto conta quanti passi è lontano dal suo
+// normale (Felicità 7 → +2, Salute −1 → −1, Ansia 2 → −2 perché è al contrario), per il suo
+// peso. Una voce non segnata vale 0, cioè "come al solito": una giornata normale fa 0, e si
+// segnano solo le differenze. Contano solo i gruppi messi nel benessere (postoInHome) e le
+// scale con un normale (quelle pari senza normale non sanno dov'è lo zero).
+function puntiDi(n, scala) {
+  const zero = normaleDi(scala);
+  if (zero === undefined) return undefined;
+  return scala.contrario ? zero - n : n - zero;
+}
+
+// La somma dei punti di un giorno; undefined se non c'è nessun voto che conta.
 function benessereDi(riassunto) {
-  let somma = 0;
-  let pesi = 0;
+  let somma;
   for (const [gruppo, voti] of riassunto.voti) {
+    if (postoInHome(gruppo) !== 'benessere') continue;
     for (const [voce, n] of voti) {
-      const peso = pesoDi(gruppo.nome, voce);
-      somma += suNove(n, gruppo) * peso;
-      pesi += peso;
+      const punti = puntiDi(n, gruppo);
+      if (punti !== undefined) somma = (somma || 0) + punti * pesoDi(gruppo.nome, voce);
     }
   }
-  return pesi ? somma / pesi : undefined;
+  return somma;
 }
+
+// "+3", "−2", "0"; e il colore: dal rosso (−8 e sotto) al verde (+8 e sopra), 0 nel mezzo.
+const scriviPunti = (p) => (p > 0 ? '+' : '') + numeroLeggibile(arrotonda(p)).replace('-', '−');
+const colorePunti = (p) => Math.min(9, Math.max(1, 5 + p / 2));
 
 // Dove sta ogni gruppo nella Home, scelto in Impostazioni (`impostazioniGruppi.home`, per nome):
 // 'benessere' (righe nel riquadro del benessere, solo per i gruppi di voti), 'riquadro' (uno
@@ -1605,7 +1667,9 @@ function statistiche(giorni) {
       s.volte.get(g).set(o, (s.volte.get(g).get(o) || 0) + 1);
     }
   }
-  s.benessere = riassunti.map(benessereDi); // un valore per giorno, undefined dove non c'è
+  // Un valore per giorno: un giorno in cui si è segnato qualcosa, ma nessun voto, vale 0;
+  // uno in cui non si è segnato niente resta vuoto (undefined).
+  s.benessere = riassunti.map((r, i) => benessereDi(r) ?? (giornataPiena(giornataDel(giorni[i])) ? 0 : undefined));
   const delPeriodo = posts.filter((p) => p.data >= giorni[0] && p.data <= giorni[giorni.length - 1]);
   s.registrati = giorni.filter((d) => giornataPiena(giornataDel(d)) || delPeriodo.some((p) => p.data === d)).length;
   s.ricordi = delPeriodo.filter((p) => !p.raccolta).length;
@@ -1629,7 +1693,7 @@ function nomeDeiVoti(gruppo) {
   const voti = gruppo.opzioni.filter((v) => !eNumero(gruppo, v));
   return voti.length === 1 ? voti[0] : nomeMostrato(gruppo);
 }
-const scalaScritta = (gruppo) => (eScalaBase(gruppo) ? '' : `da ${scriviSuScala(minimoDi(gruppo), gruppo)} a ${scriviSuScala(massimoDi(gruppo), gruppo)}`);
+const scalaScritta = (gruppo) => (eScalaBase(gruppo) ? '' : `da ${mostraSuScala(minimoDi(gruppo), gruppo)} a ${mostraSuScala(massimoDi(gruppo), gruppo)}`);
 
 // Un riquadro della Home: sopra l'icona e il nome, sotto il valore grande, e una nota piccola.
 //   voto: se il valore è un voto da 1 a 9, prende il suo colore (dal rosso al verde)
@@ -1649,15 +1713,22 @@ function riquadro({ icona = '', nome, valore, nota = '', voto, onclick, largo = 
 }
 const scriviVoto = (n) => numeroLeggibile(arrotonda(n));
 
-// Le colonne del benessere: colonne = [{ valore, etichetta }], alte quanto il voto e del suo
-// colore. Il numero sopra si scrive solo quando le colonne sono poche.
+// Le colonne del benessere: colonne = [{ valore, etichetta }], in punti. Sopra la linea dello
+// zero quelle positive, sotto quelle negative, alte in proporzione al più alto del periodo e
+// del loro colore. Il numero sopra si scrive solo quando le colonne sono poche.
 function graficoBenessere(colonne) {
   const conNumeri = colonne.length <= 12;
+  const valori = colonne.map((c) => c.valore).filter((v) => v !== undefined);
+  const alto = Math.max(0, ...valori);
+  const basso = Math.max(0, ...valori.map((v) => -v));
+  const totale = alto + basso || 1;
+  const colonna = (v, massimo) => el('span', { className: 'grafico-colonna tinta', style: `--n: ${colorePunti(v)}; height: ${(Math.abs(v) / massimo) * 100}%` });
   return el('div', { className: 'grafico' + (conNumeri ? '' : ' fitto'), style: `--colonne: ${colonne.length}` },
     ...colonne.map(({ valore, etichetta }) => el('div', { className: 'grafico-giorno' },
-      conNumeri ? el('span', { className: 'grafico-numero', textContent: valore ? scriviVoto(valore) : '' }) : '',
+      conNumeri ? el('span', { className: 'grafico-numero', textContent: valore !== undefined ? scriviPunti(valore) : '' }) : '',
       el('div', { className: 'grafico-spazio' },
-        valore ? el('span', { className: 'grafico-colonna tinta', style: `--n: ${valore}; height: ${(valore / 9) * 100}%` }) : ''),
+        el('div', { className: 'grafico-su', style: `height: ${(alto / totale) * 100}%` }, valore > 0 ? colonna(valore, alto) : ''),
+        el('div', { className: 'grafico-giu', style: `height: ${(basso / totale) * 100}%` }, valore < 0 ? colonna(valore, basso) : '')),
       el('span', { className: 'grafico-data', textContent: etichetta }))));
 }
 
@@ -1704,7 +1775,7 @@ function disegnaHome() {
   const righe = [];
   for (const g of gruppi.filter((g) => postoInHome(g) === 'benessere')) {
     const v = mediaSe(s.voti.get(g.nome));
-    if (v !== undefined) righe.push(rigaBenessere(iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome), nomeDeiVoti(g), v, scriviSuScala(v, g), suNove(v, g), mediaSe(prima.voti.get(g.nome))));
+    if (v !== undefined) righe.push(rigaBenessere(iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome), nomeDeiVoti(g), v, mostraSuScala(v, g), suNove(v, g), mediaSe(prima.voti.get(g.nome))));
     for (const voce of g.opzioni.filter((x) => eNumero(g, x))) {
       const n = mediaSe(s.numeri.get(voce));
       if (n !== undefined) righe.push(rigaBenessere(iconaDi(voce), voce, n, scriviVoto(n), undefined, mediaSe(prima.numeri.get(voce))));
@@ -1713,8 +1784,8 @@ function disegnaHome() {
   const benessere = riquadro({
     icona: '✨',
     nome: 'Benessere',
-    valore: numero === undefined ? '–' : scriviVoto(numero),
-    voto: numero,
+    valore: numero === undefined ? '–' : scriviPunti(numero),
+    voto: numero === undefined ? undefined : colorePunti(numero),
     nota: settimana ? 'ieri' : `in media · ${freccia(numero, benessereMedio(prima)) || 'prima non c\'erano voti'}`,
     largo: true,
     onclick: settimana ? () => apriGiorno(ieri) : undefined,
@@ -1729,7 +1800,7 @@ function disegnaHome() {
         riquadri.push(riquadro({
           icona: iconaDi(nomeDeiVoti(g)) || iconaDi(g.nome),
           nome: nomeDeiVoti(g),
-          valore: scriviSuScala(v, g),
+          valore: mostraSuScala(v, g),
           voto: suNove(v, g),
           nota: ['in media', scalaScritta(g), freccia(v, mediaSe(prima.voti.get(g.nome)))].filter(Boolean).join(' · '),
         }));
@@ -1873,7 +1944,21 @@ function mostraBlocco() {
 function disegnaImpostazioni() {
   const ieri = giornoPrima(oggi());
   const benessereIeri = benessereDi(riassuntoDelGiorno(ieri));
-  const gruppiDiVoti = gruppiAttuali().filter((g) => g.tipo === 'scala' && g.opzioni.some((v) => !eNumero(g, v)));
+  // I pesi per gruppo principale: le sue voci e quelle dei gruppi che ha dentro, se stanno nel benessere.
+  const rigaPeso = (g, voce) => el('div', { className: 'peso' },
+    el('span', { className: 'voce-nome', textContent: conIcona(voce) }),
+    el('div', { className: 'peso-scelte' }, ...PESI.map((n) => el('button', {
+      type: 'button',
+      className: 'chip' + (pesoDi(g.nome, voce) === n ? ' attivo' : ''),
+      textContent: String(n),
+      ariaLabel: `Peso di ${voce}: ${n}`,
+      onclick: () => cambiaPeso(g.nome, voce, n),
+    }))));
+  const righePeso = (g) => (g.tipo === 'scala' && postoInHome(g) === 'benessere'
+    ? g.opzioni.filter((v) => !eNumero(g, v)).map((voce) => rigaPeso(g, voce)) : []);
+  const blocchiPesi = gruppiAttuali().filter((g) => !genitoreDi(g))
+    .map((g) => [g, [...righePeso(g), ...figliDi(g).flatMap(righePeso)]])
+    .filter(([, righe]) => righe.length);
   $('pagina-impostazioni').replaceChildren(
     el('h2', { className: 'impostazioni-titolo', textContent: 'Impostazioni' }),
     el('section', { className: 'impostazione' },
@@ -1886,8 +1971,8 @@ function disegnaImpostazioni() {
         pinAttivo() ? el('button', { type: 'button', className: 'btn-secondario', textContent: 'Togli PIN', onclick: togliPin }) : '')),
     el('section', { className: 'impostazione' },
       el('h3', { textContent: '🏠 Home' }),
-      el('p', { className: 'nota', textContent: 'Dove compare ogni gruppo nella Home: nel riquadro del benessere (solo i gruppi di voti), in un riquadro a sé, oppure da nessuna parte. Nascondere un gruppo non cambia il calcolo del benessere: per quello ci sono i pesi qui sotto.' }),
-      ...gruppiAttuali().map((g) => el('div', { className: 'peso' },
+      el('p', { className: 'nota', textContent: 'Dove compare ogni gruppo nella Home: nel riquadro del benessere (solo i gruppi di voti), in un riquadro a sé, oppure da nessuna parte. Solo i gruppi nel benessere contano nel suo calcolo.' }),
+      ...gruppiInOrdine().map((g) => el('div', { className: 'peso' + (genitoreDi(g) ? ' rientrato' : '') },
         el('span', { className: 'voce-nome', textContent: conIcona(g.nome, nomeMostrato(g)) }),
         el('div', { className: 'peso-scelte' }, ...postiPossibili(g).map((posto) => el('button', {
           type: 'button',
@@ -1897,22 +1982,13 @@ function disegnaImpostazioni() {
         })))))),
     el('section', { className: 'impostazione' },
       el('h3', { textContent: '✨ Calcolo del benessere' }),
-      el('p', { className: 'nota', textContent: 'Il benessere di un giorno è la media dei voti da 1 a 9 segnati quel giorno. Qui scegli quanto conta ognuno: 0 non conta, 1 normale, 2 il doppio, 3 il triplo.' }),
+      el('p', { className: 'nota', textContent: 'Il benessere di un giorno è la somma dei punti: ogni voto vale quanti passi è lontano dal suo normale (Felicità 7 = +2, Ansia 2 = −2), e quello che non segni vale 0. Qui scegli quanto conta ognuno: 0 non conta, 1 normale, 2 il doppio, 3 il triplo.' }),
       el('p', { className: 'impostazione-anteprima' }, 'Ieri, con questi pesi: ',
         benessereIeri === undefined
           ? 'nessun voto'
-          : el('strong', { className: 'tinta', style: `--n: ${benessereIeri}; color: var(--tinta)`, textContent: scriviVoto(benessereIeri) })),
-      ...gruppiDiVoti.map((g) => el('div', { className: 'pesi-gruppo' },
-        el('h4', { textContent: conIcona(g.nome, nomeMostrato(g)) }),
-        ...g.opzioni.filter((v) => !eNumero(g, v)).map((voce) => el('div', { className: 'peso' },
-          el('span', { className: 'voce-nome', textContent: conIcona(voce) }),
-          el('div', { className: 'peso-scelte' }, ...PESI.map((n) => el('button', {
-            type: 'button',
-            className: 'chip' + (pesoDi(g.nome, voce) === n ? ' attivo' : ''),
-            textContent: String(n),
-            ariaLabel: `Peso di ${voce}: ${n}`,
-            onclick: () => cambiaPeso(g.nome, voce, n),
-          })))))))),
+          : el('strong', { className: 'tinta', style: `--n: ${colorePunti(benessereIeri)}; color: var(--tinta)`, textContent: scriviPunti(benessereIeri) })),
+      ...blocchiPesi.map(([g, righe]) => el('div', { className: 'pesi-gruppo' },
+        el('h4', { textContent: conIcona(g.nome, nomeMostrato(g)) }), ...righe))),
   );
 }
 

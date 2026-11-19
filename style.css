@@ -204,8 +204,10 @@ button { cursor: pointer; }
   font-weight: 600;
   line-height: 1.2;
 }
-.voto-casella.normale { border-width: 2px; border-color: var(--tinta); }
 .voto-casella.scelta { background: var(--tinta); border-color: var(--tinta); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+/* Caselle con le parole al posto dei numeri: una riga sola, la scritta va a capo dentro la casella */
+.voto-caselle.con-parole { gap: 3px; }
+.voto-caselle.con-parole .voto-casella { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 4px 2px; font-size: 10.5px; line-height: 1.1; overflow-wrap: anywhere; hyphens: auto; }
 .voto .scala-estremi { grid-column: 1 / -1; margin-top: -2px; font-size: 11px; }
 .casella-numero {
   width: 84px;
@@ -385,13 +387,16 @@ button { cursor: pointer; }
 .grafico-numero { font-size: 11px; color: var(--testo-tenue); min-height: 1.3em; }
 .grafico-spazio {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   width: 100%;
   height: 70px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--testo) 6%, transparent);
 }
 .grafico-colonna { width: 100%; border-radius: 6px; background: var(--tinta); }
+/* Sopra la linea dello zero i giorni positivi, sotto quelli negativi */
+.grafico-su { display: flex; align-items: flex-end; width: 100%; }
+.grafico-giu { display: flex; align-items: flex-start; width: 100%; border-top: 1px solid var(--bordo); }
 .grafico-data { font-size: 11px; color: var(--testo-tenue); }
 .riquadro-vuoto strong { font-size: 16px; color: var(--accento); }
 
@@ -919,6 +924,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .peso { display: flex; align-items: center; gap: 10px; }
 .peso-scelte { display: flex; gap: 4px; }
 .peso-scelte .chip { min-width: 34px; padding: 4px 0; text-align: center; }
+.peso.rientrato .voce-nome { padding-left: 16px; color: var(--testo-tenue); }
+.voce-dentro { flex-wrap: wrap; column-gap: 12px; row-gap: 2px; }
 
 /* PIN: finché non si sa se serve la pagina è nascosta; poi il tastierino copre tutto */
 
@@ -960,7 +967,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .riquadro-voce { font-size: 13px; color: var(--testo-tenue); }
 .home-piede { margin: 8px 0 0; font-size: 13px; color: var(--testo-tenue); text-align: center; }
 
-/* Sotto il nome di un gruppo, una linea a sinistra lega le sue voci e i gruppi che stanno dentro */
-.gruppo-dentro { margin-top: 10px; }
-.gruppo-corpo.con-nome { padding-left: 12px; border-left: 2px solid var(--bordo); }
+/* Come le voci di un gruppo (Sonno): una sotto l'altra, senza linee in mezzo */
+/* La linea a sinistra di ogni gruppo principale: tiene insieme le sue voci e i gruppi dentro */
+.gruppo-corpo.principale { padding-left: 12px; border-left: 2px solid var(--bordo); }
+.gruppo-dentro { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.sezione .gruppo-dentro .gruppo + .gruppo { border-top: 0; padding-top: 0; }
 .gruppo-aggiungi { margin-top: 8px; }
