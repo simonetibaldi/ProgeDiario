@@ -15,7 +15,7 @@
 //     scelte: { Hobby: ['Musical'], 'Come sto': { Energia: 6 }, Sigarette: { Sigarette: 3 } },
 //     foto: [], creato, modificato }
 //   { id: 'impostazioni-gruppi', tipo: 'gruppi', gruppi: [{ nome, tipo, opzioni: [...], estremi }],
-//     offerti: [...], collegamenti: { Outfit: { gruppo, voce } }, foto: [], creato, modificato }
+//     offerti: [...], collegamenti: { Scatti: { gruppo, voce } }, foto: [], creato, modificato }
 // Il nome di ogni File è quello che la foto ha nella cartella photos/.
 //
 // Nell'archivio le foto non sono File ma { nome, dati: ArrayBuffer }: Safari
@@ -64,7 +64,9 @@ function daArchivio(salvato) {
     // versioni 1 e 2: Blob o File salvati direttamente, i più vecchi senza nome
     ? new File([f], f.name || `${salvato.data}_${salvato.id}_${i + 1}.jpg`, { type: 'image/jpeg' })
     : new File([f.dati], f.nome, { type: 'image/jpeg' })));
-  return { ...salvato, ora: salvato.ora || '', umore: salvato.umore || '', foto };
+  // Una voce di una raccolta poi unita a un'altra (vedi RACCOLTE_UNITE) passa nella nuova.
+  const raccolta = RACCOLTE_UNITE[salvato.raccolta] ? { raccolta: RACCOLTE_UNITE[salvato.raccolta] } : {};
+  return { ...salvato, ora: salvato.ora || '', umore: salvato.umore || '', foto, ...raccolta };
 }
 
 const leggiPosts = async () => (await conStore('readonly', (s) => s.getAll())).map(daArchivio);
@@ -666,8 +668,8 @@ const ICONE_DI_BASE = Object.fromEntries(Object.entries({
   Niente: '➖', Palestra: '🏋️', Calisthenics: '🤸', Musical: '🎭', Uncinetto: '🧶', Tromba: '🎺', Leggere: '📚',
   Felice: '😄', Sereno: '😌', Entusiasta: '🤩', Grato: '🙏', Innamorato: '😍', Nostalgico: '🥲',
   Annoiato: '😐', Ansioso: '😰', Triste: '😢', Arrabbiato: '😠',
-  Libri: '📚', Film: '🎬', 'Persone nuove': '👋', Conversazioni: '💬', Idee: '💡', Fantasie: '🌈',
-  Intuizioni: '✨', Scoperte: '🔍', Ragionamenti: '🧩', Outfit: '👕', Scatti: '📷', 'Giorni belli': '⭐',
+  Libri: '📚', Film: '🎬', 'Persone nuove': '👋', Conversazioni: '💬', 'Idee e intuizioni': '💡', Fantasie: '🌈', Sogni: '🌙',
+  Scoperte: '🔍', Ragionamenti: '🧩', Scatti: '📷', 'Giorni belli': '⭐',
 }).map(([nome, icona]) => [nome.toLowerCase(), icona]));
 
 // L'icona scelta vale più di quella di base; una scelta vuota vuol dire nessuna icona.
@@ -798,7 +800,7 @@ function aggiungiAlGruppoUmore(umore) {
   salvaGruppi(gruppiAttuali().map((g) => (g === gruppo ? { ...g, opzioni: [...g.opzioni, umore] } : g)));
 }
 
-// Il voto di una raccolta dell'archivio (per esempio Outfit) può segnare una scala di Oggi:
+// Il voto di una raccolta dell'archivio (per esempio Scatti) può segnare una scala di Oggi:
 // si sceglie dall'archivio e sta in impostazioniGruppi.collegamenti. Il verso è uno solo:
 // segnare la scala a mano non crea niente nell'archivio.
 // Restituisce Map(voce -> il ricordo che la segna) per quel gruppo in quel giorno.
@@ -2332,15 +2334,24 @@ const RACCOLTE = [
   { nome: 'Film', campi: [{ nome: 'Titolo' }, { nome: 'Voto', tipo: 'voto' }] },
   { nome: 'Persone nuove', campi: [{ nome: 'Nome' }, { nome: 'Dove o come' }] },
   { nome: 'Conversazioni', campi: [{ nome: 'Con chi' }] },
-  { nome: 'Idee', campi: [{ nome: 'Titolo' }, { nome: 'Sviluppo' }] },
+  { nome: 'Idee e intuizioni', campi: [{ nome: 'Titolo' }, { nome: 'Sviluppo' }] },
   { nome: 'Fantasie', campi: [{ nome: 'Titolo' }] },
-  { nome: 'Intuizioni', campi: [{ nome: 'Titolo' }] },
+  { nome: 'Sogni', campi: [{ nome: 'Titolo' }] },
   { nome: 'Scoperte', campi: [{ nome: 'Titolo' }, { nome: 'Fonte' }] },
   { nome: 'Ragionamenti', campi: [{ nome: 'Titolo' }, { nome: 'Conclusione' }] },
-  { nome: 'Outfit', foto: true, campi: [{ nome: 'Voto', tipo: 'voto' }, { nome: 'Occasione' }] },
-  { nome: 'Scatti', foto: true, campi: [{ nome: 'Voto', tipo: 'voto' }] },
+  { nome: 'Scatti', foto: true, campi: [{ nome: 'Voto', tipo: 'voto' }, { nome: 'Occasione' }] },
 ];
 const GIORNI_BELLI = 'Giorni belli';
+
+// Le raccolte unite il 20 novembre 2026: una voce col nome vecchio si legge col nuovo (daArchivio).
+const RACCOLTE_UNITE = { Idee: 'Idee e intuizioni', Intuizioni: 'Idee e intuizioni', Outfit: 'Scatti' };
+
+// Nell'elenco dell'archivio le raccolte stanno in due riquadri affiancati; quelle fuori dai
+// riquadri (Giorni belli in cima, Scatti in fondo) hanno una riga larga tutta loro.
+const FAMIGLIE = [
+  { nome: 'Dal mondo', icona: '🌍', raccolte: ['Libri', 'Film', 'Persone nuove', 'Conversazioni'] },
+  { nome: 'Dalla testa', icona: '🧠', raccolte: ['Idee e intuizioni', 'Fantasie', 'Sogni', 'Scoperte', 'Ragionamenti'] },
+];
 
 let raccoltaAperta = null; // la raccolta mostrata; null vuol dire l'elenco delle raccolte
 let urlArchivio = []; // URL temporanei delle foto della griglia
@@ -2387,11 +2398,18 @@ function disegnaArchivio() {
     disegnaRaccolta(raccoltaAperta);
     return;
   }
-  const elenco = [[GIORNI_BELLI, giornate.filter((g) => g.stella).length], ...RACCOLTE.map((r) => [r.nome, vociDi(r.nome).length])];
-  $('pagina-archivio').replaceChildren(...elenco.map(([nome, n]) => el('button', {
-    className: 'raccolta',
-    onclick: () => apriRaccolta(nome),
-  }, el('span', { textContent: conIcona(nome) }), el('span', { className: 'raccolta-numero', textContent: n || '' }))));
+  const quante = (nome) => (nome === GIORNI_BELLI ? giornate.filter((g) => g.stella).length : vociDi(nome).length);
+  const riga = (nome) => el('button', { className: 'raccolta', onclick: () => apriRaccolta(nome) },
+    el('span', { className: 'raccolta-nome', textContent: conIcona(nome) }),
+    el('span', { className: 'raccolta-numero', textContent: quante(nome) || '' }));
+  const inFamiglia = FAMIGLIE.flatMap((f) => f.raccolte);
+  const sole = RACCOLTE.map((r) => r.nome).filter((n) => !inFamiglia.includes(n));
+  $('pagina-archivio').replaceChildren(
+    riga(GIORNI_BELLI),
+    el('div', { className: 'famiglie' }, ...FAMIGLIE.map((f) => el('section', { className: 'famiglia' },
+      el('h3', { textContent: f.icona + ' ' + f.nome }),
+      ...f.raccolte.filter((n) => raccoltaChiamata(n)).map(riga)))),
+    ...sole.map(riga));
 }
 
 function disegnaRaccolta(nome) {

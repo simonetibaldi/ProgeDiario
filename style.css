@@ -844,6 +844,21 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 }
 .raccolta { justify-content: space-between; align-items: center; padding: 14px 16px; font-size: 16px; }
 .raccolta-numero { color: var(--testo-tenue); }
+/* I due riquadri quadrati affiancati: Dal mondo e Dalla testa, con le loro raccolte dentro */
+.famiglie { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.famiglia {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  aspect-ratio: 1;
+  padding: 12px 10px;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--carta);
+}
+.famiglia h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--testo-tenue); }
+.famiglia .raccolta { border: 0; background: none; padding: 6px 2px; font-size: 14px; gap: 6px; }
+.raccolta-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .archivio-testa { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .archivio-testa h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 18px; font-weight: normal; }
 .voce-archivio { flex-direction: column; gap: 4px; padding: 12px 16px; }
